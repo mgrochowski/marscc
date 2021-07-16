@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 DATA_URL = 'https://www.is.umk.pl/~grochu/mars/mars_training_data.zip'
+INPUT_SIZE = (256, 256)
 
 import numpy as np
 import cv2
@@ -75,12 +76,17 @@ target_img_path = 'mask_1.png'
 
 
 # funkcja tworzy zbiór treningowy obrazów składający się z 'n' obrazow o wymiarach 'nx' na 'ny'
-def _build_samples(sample_count, train_x, train_y, nx, ny, **kwargs):
+def _build_samples(sample_count, train_x, train_y, image_size=INPUT_SIZE, **kwargs):
+
+    nx, ny = image_size
     images = np.zeros((sample_count, nx, ny, channels))
     labels = np.zeros((sample_count, nx, ny, classes))
+
+    train_x_norm = train_x / 255.0
+
     for i in range(sample_count):
-        image, mask = sample_image(train_x, train_y, out_size=(nx, ny), **kwargs)
-        images[i, ..., 0] = image / 255.0
+        image, mask = sample_image(train_x_norm, train_y, out_size=image_size, **kwargs)
+        images[i, ..., 0] = image
         labels[i, mask == 0, 0] = 1
         labels[i, mask == 1, 1] = 1
         labels[i, mask == 2, 2] = 1
@@ -106,25 +112,47 @@ def download_data(target_dir='./data'):
     else:
         print('Download ERROR')
 
-# funkcja przygotowuje zbiór treningowy i walidacyjny.
-def load_data(count, validation_split=0.25, **kwargs):
 
-    input_img = cv2.imread(input_img_path, cv2.IMREAD_GRAYSCALE)
-    h, w = input_img.shape
+def load_data(sample_per_image=100, validation_split=0.25, file_path='data/train_files.txt', **kwargs):
 
-    target_img = cv2.imread(target_img_path)
-    labels = image_to_labelmap(target_img)
+    if not Path(file_path).exists():
+        download_data()
 
-    split = h - int(h * validation_split)
+    data_dir = Path(file_path).parent
 
-    val_count = int(count * validation_split)
-    val_x = input_img[split:, :]
-    val_y = labels[split:, :]
+    # read images and masks list
+    files = []
 
-    train_count = count - val_count
-    train_x = input_img[:split, :]
-    train_y = labels[:split, :]
+    with open(file_path, 'r') as f:
+        for line in f:
+            # print(line)
+            files.append( ( str(data_dir.joinpath(x)) for x in line.split() ) )
 
-    return [tf.data.Dataset.from_tensor_slices(_build_samples(train_count, train_x, train_y, **kwargs)),
-            tf.data.Dataset.from_tensor_slices(_build_samples(train_count, train_x, train_y, **kwargs))]
+    train_samples, val_samples  = [], []
 
+    for image_path, mask_path in files:
+
+        input_img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        h, w = input_img.shape
+
+        target_img = cv2.imread(mask_path)
+        labels = image_to_labelmap(target_img)
+
+        split = h - int(h * validation_split)
+
+        val_count = int(sample_per_image * validation_split)
+        val_x = input_img[split:, :]
+        val_y = labels[split:, :]
+
+        train_count = sample_per_image - val_count
+        train_x = input_img[:split, :]
+        train_y = labels[:split, :]
+
+        train_samples.append(_build_samples(train_count, train_x, train_y, **kwargs))
+        val_samples.append(_build_samples(val_count,   val_x,   val_y,   **kwargs))
+
+    return train_samples, val_samples
+    #
+    # return [tf.data.Dataset.from_tensor_slices(_build_samples(train_count, train_x, train_y, **kwargs)),
+    #         tf.data.Dataset.from_tensor_slices(_build_samples(train_count, train_x, train_y, **kwargs))]
+    #
