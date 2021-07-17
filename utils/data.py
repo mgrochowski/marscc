@@ -88,16 +88,31 @@ def sample_image(x, y, out_size=(300, 300), max_zoom=1.0):
 
 
 # funkcja tworzy zbiór treningowy obrazów składający się z 'n' obrazow o wymiarach 'nx' na 'ny'
-def build_samples(sample_count, train_x, train_y, image_size=INPUT_SIZE, channels=1, classes=3, **kwargs):
+def build_samples(sample_count, train_x, train_y, image_size=INPUT_SIZE, channels=1, classes=3,
+                  label_density_range=(0.001, 0.8), **kwargs):
 
     nx, ny = image_size
     images = np.zeros((sample_count, nx, ny, channels))
     labels = np.zeros((sample_count, nx, ny, classes))
 
+    sample_attempts = 10
     train_x_norm = train_x / 255.0
+    n_pixels = nx * ny
 
     for i in range(sample_count):
-        image, mask = sample_image(train_x_norm, train_y, out_size=image_size, **kwargs)
+        print('SAMPLE %d' % i)
+        k = 0
+        while k < sample_attempts:
+
+            image, mask = sample_image(train_x_norm, train_y, out_size=image_size, **kwargs)
+            label_density = np.sum(mask > 0) / n_pixels
+            if label_density >= label_density_range[0] and label_density <= label_density_range[1]:
+                print('attempt %2d OK density %.2f%%' % (k+1, label_density * 100.0))
+                break
+            else:
+                print('attempt %2d FAIL density %.2f%%' % (k + 1, label_density * 100.0))
+            k = k + 1
+
         images[i, ..., 0] = image
         for c in range(classes):
             labels[i, mask == c, c] = 1
@@ -133,8 +148,8 @@ def save_samples(save_dir, images, labels):
     for image, label in zip(images, labels):
         cv2.imwrite(str(Path(save_dir).joinpath('%05d_image.png' % k)), image * 255.0)
 
+        mask_img = np.zeros((label.shape[0], label.shape[1], 3), dtype=np.int32)
         for i, l in enumerate(label_list):
-            mask_img = label.copy()
             mask_img[label[:, :, i] == 1.0, :] = rgb_map[l]
 
         cv2.imwrite(str(Path(save_dir).joinpath('%05d_mask.png' % k)), mask_img)
