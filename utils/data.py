@@ -203,14 +203,15 @@ def load_data(sample_per_image=100, validation_split=0.25, file_path='data/train
         train_images = np.concatenate(train_images, axis=0)
         train_masks = np.concatenate(train_masks, axis=0)
         val_images = np.concatenate(val_images, axis=0)
-        val_masks =  np.concatenate(val_masks, axis=0)
-
+        val_masks = np.concatenate(val_masks, axis=0)
 
         if save_dir is not None:
             save_samples(Path(save_dir) / 'train' , train_images, train_masks)
             save_samples(Path(save_dir) / 'val', val_images, val_masks)
 
-        return [train_images, train_masks], [val_images, val_masks]
+        # return [train_images, train_masks], [val_images, val_masks]
+        return [tf.data.Dataset.from_tensor_slices( (train_images, train_masks) ), \
+               tf.data.Dataset.from_tensor_slices( (val_images, val_masks) )]
 
     # return [tf.data.Dataset.from_tensor_slices(_build_samples(train_count, train_x, train_y, **kwargs)),
     #         tf.data.Dataset.from_tensor_slices(_build_samples(train_count, train_x, train_y, **kwargs))]
