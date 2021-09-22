@@ -1,5 +1,5 @@
 from __future__ import print_function, division, absolute_import, unicode_literals
-from utils.data import image_to_labelmap
+from utils.image import image_to_labelmap
 import click
 import cv2
 import os
