@@ -5,12 +5,12 @@ import cv2
 import os
 import numpy as np
 # import pandas as pd
-from skimage.io import imread, imshow
+from skimage.io import imread, imshow, imsave
 from skimage.color import rgb2gray
 from skimage.morphology import (erosion, dilation, closing, opening,
                                 area_closing, area_opening)
 from skimage.measure import label, regionprops, regionprops_table
-
+from skimage.color import label2rgb
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
@@ -31,19 +31,16 @@ from pathlib import Path
 @click.option('--overlap', default=100, help='Patch overlaping size (in pixels or ratio)')
 @click.option('--output_dir', default='output_dir', help='Output directory')
 @click.option('--resize_ratio', default=1.0, help='Scaling ratio')
-
-def run(input_file, mask_file, output_width=450, output_height=450, overlap=100, resize_ratio=0.1, output_dir='output_dir'):
-    # img_mask='data/mask_0.png'
+@click.option('--debug', default=False, is_flag=True, help='Create debug pictures')
+def run(input_file, mask_file, output_width=450, output_height=450, overlap=100, resize_ratio=0.1, output_dir='output_dir', debug=False):
 
     image = cv2.imread(input_file, cv2.IMREAD_GRAYSCALE)
-
     if image is None:
         raise Exception('Cant open file %s' % input_file)
 
     h, w = image.shape[0], image.shape[1]
 
     mask_img = cv2.imread(mask_file)
-
     if mask_img is None:
         raise Exception('Cant open file %s' % mask_file)
 
@@ -56,6 +53,7 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
 
         image = cv2.resize(image, (h_new, w_new), interpolation=cv2.INTER_AREA)
         mask_img = cv2.resize(mask_img, (h_new, w_new), interpolation=cv2.INTER_NEAREST_EXACT)
+        print('New size: %dx%d' % (h_new, w_new))
 
     labels = image_to_labelmap(mask_img)
 
@@ -72,6 +70,10 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
     Path.mkdir(output_images, exist_ok=True, parents=True)
     Path.mkdir(output_annotations, exist_ok=True)
 
+    if debug is True:
+        output_debug = Path(output_dir + '/debug/')
+        Path.mkdir(output_debug, exist_ok=True)
+
     img_name = Path(input_file).stem
     img_ext = Path(input_file).suffix
 
@@ -81,29 +83,47 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
     #
     for i, patch in enumerate(patches):
         patch_x, patch_y, patch_info = patch
-        file_name =  '%s_patch_%03d_%05d_%05d%s' % (img_name, i, patch_info[0], patch_info[1], img_ext)
+        file_name =  '%s_patch_%03d_%05d_%05d_r%0.2f%s' % (img_name, i, patch_info[0], patch_info[1], resize_ratio, img_ext)
         cv2.imwrite(str(output_images / file_name), patch_x)
         cv2.imwrite(str(output_annotations / file_name), patch_y)
+        if debug is True:
+            # patch_debug = np.hstack((patch_x, patch_y[:, :, 0]))
+            patch_debug = label2rgb(patch_y[:, :, 0], image=patch_x, bg_label=0, alpha=0.7, kind='overlay')
+            patch_debug = patch_debug * 255
+            patch_debug = patch_debug.astype(np.uint8)
+            # imsave(str(output_debug / file_name), patch_debug)
+            cv2.imwrite(str(output_debug / file_name), patch_debug)
 
     print('Saved %d patches to: %s' % (len(patches), output_dir))
 
 
-def split_image(input_image, input_annotations, output_width=450, output_height=450, overlap=100):
+def split_image(input_image, input_annotations, output_width=450, output_height=450, overlap=100, padding=None):
 
+    if padding is None: padding = overlap
     patches = []
 
     x_start, y_start = 0, 0
 
     height, width = input_image.shape[0], input_image.shape[1]
 
-    while y_start + output_height <= height:
+    image = input_image
+    annotations = input_annotations
+
+    if padding > 0:
+        image = np.pad(input_image, [[0, padding], [0, padding]])
+        annotations = np.pad(input_annotations, [[0, padding], [0, padding], [0, 0]])
+        # print('Adding padding', padding)
+
+    while y_start + output_height <= height + padding:
 
         y_end = y_start + output_height
 
-        while x_start + output_width <= width:
+        while x_start + output_width <= width + padding:
+
             x_end = x_start + output_width
-            patch_x = input_image[y_start:y_end, x_start:x_end]
-            patch_y = input_annotations[y_start:y_end, x_start:x_end]
+
+            patch_x = image[y_start:y_end, x_start:x_end]
+            patch_y = annotations[y_start:y_end, x_start:x_end]
             patches.append((patch_x, patch_y, (x_start, y_start, x_end, y_end)))
             x_start = x_start + output_width - overlap
 
