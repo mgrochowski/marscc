@@ -113,23 +113,6 @@ def split_image(input_image, input_annotations, output_width=450, output_height=
     return patches
 
 
-from skimage.measure import label as label_region
-
-
-def detectoin(x, label=1):
-    label_img = (x == label).astype(np.int32)
-
-    # apply threshold
-    bw = closing(label_img, square(3))
-
-    # remove artifacts connected to image border
-    cleared = clear_border(bw)
-
-    # label image regions
-    label_image = label_region(cleared, background=0)
-    return label_image
-
-
 
 if __name__ == '__main__':
 
