@@ -10,32 +10,6 @@ import tensorflow as tf
 from pathlib import Path
 import urllib
 
-rgb_map = {
-       'background' : [255, 255, 255],
-       'cone' :  [190, 190, 255],
-       'crater' :  [115, 178, 115]
-   }
-
-label_map = {
-      'background' : 0,
-      'cone' : 1,
-      'crater' : 2
-    }
-
-label_list = [
-    'background',
-    'cone',
-    'crater'
-    ]
-
-def image_to_labelmap(x, rgb_map=rgb_map, label_map=label_map):
-    
-    h, w, c = x.shape
-    y = np.zeros((h,w), dtype=np.uint8)
-    for rgb_label in rgb_map:
-        y[np.alltrue(x == rgb_map[rgb_label], axis=2)] = label_map[rgb_label]
-      
-    return y
 
 def sample_image(x, y, out_size=(300, 300), max_zoom=1.0):
 
@@ -77,14 +51,6 @@ def sample_image(x, y, out_size=(300, 300), max_zoom=1.0):
     sx = cv2.resize(sx, out_size, interpolation = cv2.INTER_NEAREST)
     sy = cv2.resize(sy, out_size, interpolation=cv2.INTER_NEAREST)
     return sx, sy
-
-#
-# channels = 1  # ilosc kanalow wejsciowych
-# classes = 3  # ilosc klas
-# # input_img_path = 'THEMIS.png'
-# # target_img_path = 'masks.png'
-# input_img_path = 'CTX_basemap_1.png'
-# target_img_path = 'mask_1.png'
 
 
 # funkcja tworzy zbiór treningowy obrazów składający się z 'n' obrazow o wymiarach 'nx' na 'ny'

@@ -10,10 +10,14 @@ import numpy as np
 from skimage.morphology import closing, square
 from skimage.segmentation import clear_border
 
-from utils.data import image_to_labelmap
+from utils.image import image_to_labelmap, labelmap_to_image
 from generate_training_data import split_image
 from keras_segmentation_mod.predict import predict_multiple
 from predict_ks import model_from_checkpoint_path
+from keras_segmentation_mod.data_utils.data_loader import class_colors
+from detect_cones import detect_cones_and_craters
+
+
 
 # @click.command()
 # @click.option('--input_file', default=None, help='Input file')
@@ -58,8 +62,8 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
         # code labels as blue channel in RGB image
         pad_zeros = np.zeros((labels.shape[0], labels.shape[1], 2)).astype('uint8')
         ann_img = np.concatenate((np.expand_dims(labels, axis=2), pad_zeros), axis=2)
-
-    patches = split_image(image, ann_img, output_width=output_width, output_height=output_height, overlap=overlap)
+    padding = max(output_height, output_width) - overlap
+    patches = split_image(image, ann_img, output_width=output_width, output_height=output_height, overlap=overlap, padding=padding)
 
     input_images, input_ann = [], []
     for i, patch in enumerate(patches):
@@ -68,10 +72,9 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
         input_ann.append(patch_y)
 
     model = model_from_checkpoint_path(checkpoint_path, 30)
+    print('Model input shape', model.input_shape)
 
     inps =input_images
-    from keras_segmentation_mod.data_utils.data_loader import class_colors
-    # class_colors =  ['red', 'green']
 
     # segmentation
     predictions = predict_multiple(model=model, inps=inps, inp_dir=None, out_dir=None,
@@ -81,17 +84,30 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
 
 
     # join
-    output_image = np.zeros((h_new, w_new))
-    output_image2 = np.zeros((h_new, w_new))
+    output_image = np.zeros((h_new + padding, w_new + padding))
+    # output_image2 = np.zeros((h_new + padding, w_new + padding))
 
     for i, patch in enumerate(patches):
         _, _, patch_info = patch
         sx, sy, ex, ey = patch_info
         output_image[sy:ey, sx:ex] = predictions[i]
-        output_image2[sy:ey, sx:ex] = inps[i]
+        # output_image[sy, sx:ex] = 3
+        # output_image[ey, sx:ex] = 3
+        # output_image[sy:ey, sx] = 3
+        # output_image[sy:ey, ex] = 3
 
-    a = 1
-    # # save results
+        # output_image2[sy:ey, sx:ex] = inps[i]
+        # output_image2[sy, sx:ex] = 0
+        # output_image2[ey, sx:ex] = 0
+        # output_image2[sy:ey, sx] = 0
+        # output_image2[sy:ey, ex] = 0
+
+    # save results
+    output_image_rgb = labelmap_to_image(output_image[:h_new, :w_new])
+    cv2.imwrite(output_file, output_image_rgb)
+
+    detect_cones_and_craters(labels=output_image[:h_new, :w_new], min_area=10, min_perimeter=5, min_solidity=0.5,
+                             output_file='detection_output2.png')
     # # create output directories structure
     # output_images = Path(output_dir + '/images/')
     # output_annotations = Path(output_dir + '/annotations/')

@@ -36,6 +36,17 @@ def image_to_labelmap(x, rgb_map=rgb_map, label_map=label_map):
       
     return y
 
+
+def labelmap_to_image(labels, rgb_map=rgb_map, label_map=label_map):
+
+    h, w = labels.shape
+    y = np.zeros((h, w, 3), dtype=np.uint8)
+    for rgb_label in rgb_map:
+        y[label_map[rgb_label] == labels, : ] = rgb_map[rgb_label]
+
+    return y
+
+
 def sample_image(x, y, out_size=(300, 300), max_zoom=1.0):
 
     height, width = x.shape[0] , x.shape[1]

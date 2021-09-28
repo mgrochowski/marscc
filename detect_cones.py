@@ -1,5 +1,5 @@
 from __future__ import print_function, division, absolute_import, unicode_literals
-from utils.data import image_to_labelmap
+from utils.image import image_to_labelmap
 import click
 import cv2
 
@@ -41,19 +41,21 @@ def run(input_file, min_area=10, min_perimeter=5, min_solidity=0.5, output_file=
     # plt.imshow(image)
     # plt.show()
 
-    label = image_to_labelmap(image)
+    labels = image_to_labelmap(image)
     # plt.imshow(label)
 
-    x_image = label
+    results = detect_cones_and_craters(labels, min_area=min_area, min_perimeter=min_perimeter, min_solidity=min_solidity, output_file=output_file)
 
+
+
+def detect_cones_and_craters(labels, min_area=10, min_perimeter=5, min_solidity=0.5, output_file='output.png'):
 
     color = ['red', 'green']
-
     detected = {}
 
     # detect
     for i, label in enumerate(['cone', 'crater']):
-        label_image = detectoin(x_image, label=i + 1)
+        label_image = detectoin(labels, label=i + 1)
         res = regionprops(label_image)
 
         detected[label] = res
@@ -81,7 +83,7 @@ def run(input_file, min_area=10, min_perimeter=5, min_solidity=0.5, output_file=
 
     # plot
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.imshow(x_image)
+    ax.imshow(labels)
 
     for i, label in enumerate(['cone', 'crater']):
         res = detected[label]
@@ -105,6 +107,8 @@ def run(input_file, min_area=10, min_perimeter=5, min_solidity=0.5, output_file=
             print('%5d  %9d  %25s  %8.1f %8.1f  %8.1f  %5.3f ' % (
             region.label, region.area, str(region.bbox), region.centroid[0], region.centroid[1], region.perimeter,
             region.solidity))
+
+    return detected
 
 
 from skimage.measure import label as label_region
