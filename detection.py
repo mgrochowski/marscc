@@ -15,22 +15,21 @@ from generate_training_data import split_image
 from keras_segmentation_mod.predict import predict_multiple
 from predict_ks import model_from_checkpoint_path
 from keras_segmentation_mod.data_utils.data_loader import class_colors
-from detect_cones import detect_cones_and_craters
+from detect_cones import detect_cones_and_craters, print_detections, draw_regions2
 
 
-
-# @click.command()
-# @click.option('--input_file', default=None, help='Input file')
-# @click.option('--mask_file', default=None, help='Mask image')
-# @click.option('--output_width', default=450, help='Width of output patch [in ptx]')
-# @click.option('--output_height', default=450, help='Height of output patch [in ptx]')
-# @click.option('--overlap', default=100, help='Patch overlaping size (in pixels or ratio)')
-# @click.option('--output_file', default='output_file', help='Output file')
-# @click.option('--resize_ratio', default=1.0, help='Scaling ratio')
-# @click.option('--checkpoint_path', default=None, help='Path to model checkpoint')
+@click.command()
+@click.option('--input_file', default=None, help='Input file')
+@click.option('--mask_file', default=None, help='Mask image')
+@click.option('--output_width', default=450, help='Width of output patch [in ptx]')
+@click.option('--output_height', default=450, help='Height of output patch [in ptx]')
+@click.option('--overlap', default=100, help='Patch overlaping size (in pixels or ratio)')
+@click.option('--resize_ratio', default=1.0, help='Scaling ratio')
+@click.option('--checkpoint_path', default=None, help='Path to model checkpoint')
+@click.option('--output_dir', default='detection_output', help='Output directory')
 
 def run(input_file, mask_file, output_width=450, output_height=450, overlap=100, resize_ratio=0.1,
-        output_file='output.png', checkpoint_path='models/some_checkpoint'):
+        output_dir='detection_output', checkpoint_path='models/some_checkpoint'):
 
     image = cv2.imread(input_file, cv2.IMREAD_GRAYSCALE)
     if image is None:
@@ -38,6 +37,7 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
 
     h, w = image.shape[0], image.shape[1]
 
+    mask_img = None
     if mask_file is not None:
         mask_img = cv2.imread(mask_file)
 
@@ -48,6 +48,7 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
 
     print('Input size: %dx%d' % (h, w))
 
+    h_new, w_new = h, w
     if resize_ratio != 1.0:
         h_new = int(h * resize_ratio)
         w_new = int(w * resize_ratio)
@@ -103,11 +104,30 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
         # output_image2[sy:ey, ex] = 0
 
     # save results
-    output_image_rgb = labelmap_to_image(output_image[:h_new, :w_new])
-    cv2.imwrite(output_file, output_image_rgb)
+    o_dir = Path(output_dir)
+    o_dir.mkdir(parents=True, exist_ok=True)
 
-    detect_cones_and_craters(labels=output_image[:h_new, :w_new], min_area=10, min_perimeter=5, min_solidity=0.5,
-                             output_file='detection_output2.png')
+    i_name = Path(input_file).stem
+    output_image_rgb = labelmap_to_image(output_image[:h_new, :w_new])
+    file_path = str(o_dir / i_name) + '_segmentation.png'
+    cv2.imwrite(file_path, output_image_rgb)
+
+    results = detect_cones_and_craters(labels=output_image[:h_new, :w_new], min_area=10, min_perimeter=5, min_solidity=0.5)
+
+    log = print_detections(results)
+    i_name = Path(input_file).stem
+    file_path = str(o_dir / i_name) + '_regions.log'
+    with open(file_path, 'w') as f:
+        f.write(log)
+
+    i_name = Path(input_file).stem
+    image_reg = draw_regions2(image, results, thickness=1)
+    file_path = str(o_dir / i_name) + '_img_regions.png'
+    cv2.imwrite(file_path, image_reg)
+
+    print('Results saved in %s' % output_dir)
+
+
     # # create output directories structure
     # output_images = Path(output_dir + '/images/')
     # output_annotations = Path(output_dir + '/annotations/')
@@ -130,8 +150,6 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
     # print('Saved %d patches to: %s' % (len(patches), output_dir))
 
 
-
-
 if __name__ == '__main__':
 
     input_file = 'data\\test\\scale_500K\\unnamed_testing_1.png'
@@ -142,5 +160,6 @@ if __name__ == '__main__':
     resize_ratio = 0.1
     output_file = 'detection_output.png'
     checkpoint_path = 'logs\\unet_mini_2021-09-27_003743.848447\\checkpoints\\unet_mini'
-    run(input_file=input_file, mask_file=mask_file, output_width=output_width, output_height=output_height,
-        overlap=overlap, resize_ratio=resize_ratio, output_file=output_file, checkpoint_path=checkpoint_path)
+    # run(input_file=input_file, mask_file=mask_file, output_width=output_width, output_height=output_height,
+    #     overlap=overlap, resize_ratio=resize_ratio, output_file=output_file, checkpoint_path=checkpoint_path)
+    run()
