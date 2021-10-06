@@ -4,7 +4,7 @@ from keras_segmentation_mod import predict
 def model_from_checkpoint_path(checkpoints_path, epoch=None):
     import os
     import json
-    from keras_segmentation.models.all_models import model_from_name
+    from keras_segmentation_mod.models.all_models import model_from_name
 
     assert (os.path.isfile(checkpoints_path+"_config.json")
             ), "Checkpoint not found."
