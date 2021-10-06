@@ -1,17 +1,15 @@
-# train
+# Generate training data from images of Mars whit 1:500K scale
 
-
-train_files='data_input/train.txt'
-val_files='data_input/val.txt'
-test_files='data_input/test.txt'
+input_path='data/mars_images_scale_1_500K/'
+output_path='data/mars_data/'
 
 output_width=480
 output_height=480
 overlap=240
-resize_ratio="0.1"
 
-output_dir=data_output/train
-input_files=${train_files}
+train_files='${input_path}/train.txt'
+val_files='${input_path}/val.txt'
+test_files='${input_path}/test.txt'
 
 function run
 {
@@ -37,25 +35,25 @@ function run
 ##############  TRAIN DATA ##################
 echo "Generate training data"
 resize_ratio="0.1"
-output_dir=data_output/train
+output_dir='{output_path}/train'
 input_files=${train_files}
 run
 
 # 
 resize_ratio="0.05"
-output_dir=data_output/train
+output_dir='{output_path}/train'
 input_files=${train_files}
 run
 
 ##############  VAL DATA ##################
 echo "Generate valiadtion data"
 resize_ratio="0.1"
-output_dir=data_output/val
+output_dir='{output_path}/val'
 input_files=${val_files}
 run
 
 resize_ratio="0.05"
-output_dir=data_output/val
+output_dir='{output_path}/val'
 input_files=${val_files}
 run
 
@@ -63,13 +61,13 @@ run
 ##############  TEST DATA ##################
 echo "Generate test data"
 resize_ratio="0.1"
-output_dir="data_output/test_0.1"
+output_dir='{output_path}/test_0.1'
 input_files=${test_files}
 run
 
 # 
 resize_ratio="0.05"
-output_dir="data_output/test_0.05"
+output_dir='{output_path}/test_0.05'
 input_files=${test_files}
 run
 
