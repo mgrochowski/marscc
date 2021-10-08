@@ -1,30 +1,22 @@
+# Detect cones and craters on annotation image
+
 from __future__ import print_function, division, absolute_import, unicode_literals
 
-import imageio
+from pathlib import Path
 
-from utils.image import image_to_labelmap, label_map
 import click
 import cv2
-
-import numpy as np
-# import pandas as pd
-from skimage.io import imread, imshow
-from skimage.color import rgb2gray, gray2rgb
-from skimage.morphology import (erosion, dilation, closing, opening,
-                                area_closing, area_opening)
-from skimage.measure import label, regionprops, regionprops_table
-
-import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
+import numpy as np
 
-from skimage import data
-from skimage.filters import threshold_otsu
-from skimage.segmentation import clear_border
-from skimage.measure import label, regionprops
+from skimage.color import gray2rgb
+from skimage.measure import regionprops
 from skimage.morphology import closing, square
-from skimage.color import label2rgb
-from skimage.draw import rectangle_perimeter, set_color
-from pathlib import Path
+from skimage.segmentation import clear_border
+from skimage.measure import label as label_region
+
+from utils.image import image_to_labelmap, label_map
 
 
 @click.command()
@@ -46,7 +38,6 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
 
     labels = image_to_labelmap(image)
     # plt.imshow(label)
-
 
     results = detect_cones_and_craters(labels, min_area=min_area, min_perimeter=min_perimeter, min_solidity=min_solidity)
     log = print_detections(results)
@@ -76,7 +67,6 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
             cv2.imwrite(file_path, inp_img_reg)
 
     print('Results saved in %s' % output_dir)
-
 
 
 def detect_cones_and_craters(labels, min_area=10, min_perimeter=5, min_solidity=0.5):
@@ -110,12 +100,11 @@ def detect_cones_and_craters(labels, min_area=10, min_perimeter=5, min_solidity=
     return detected
 
 
-from skimage.measure import label as label_region
-
 # obsolete
 def draw_regions(image, detected, color=None):
 
-    if color is None: color = ['red', 'green']
+    if color is None:
+        color = ['red', 'green']
 
     # # plot
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -133,16 +122,16 @@ def draw_regions(image, detected, color=None):
     plt.savefig('output.png')
 
 
-
 def draw_regions2(image, detected, color=None, thickness=3):
 
-    if color is None: color = [[0, 0, 255], [0, 255, 0]]
+    if color is None:
+        color = [[0, 0, 255], [0, 255, 0]]
 
     img_reg = image.copy()
     if len(img_reg.shape) == 2:
         img_reg = gray2rgb(img_reg)
 
-    alpha = 0.5
+    # alpha = 0.5
 
     for i, label in enumerate(['cone', 'crater']):
         res = detected[label]
@@ -173,8 +162,6 @@ def print_detections(detected):
     return text
 
 
-
-
 def detectoin(x, label=1):
     label_img = (x == label).astype(np.int32)
 
@@ -187,7 +174,6 @@ def detectoin(x, label=1):
     # label image regions
     label_image = label_region(cleared, background=0)
     return label_image
-
 
 
 if __name__ == '__main__':

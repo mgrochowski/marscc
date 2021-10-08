@@ -1,34 +1,45 @@
-from keras_segmentation_mod import predict
+from keras_segmentation import predict
+
 
 # wrap funkction from predict.py
-def model_from_checkpoint_path(checkpoints_path, epoch=None):
+def model_from_checkpoint_path(checkpoints_path, epoch=None, input_height=None, input_width=None):
     import os
     import json
-    from keras_segmentation_mod.models.all_models import model_from_name
+    from keras_segmentation.models.all_models import model_from_name
+
 
     assert (os.path.isfile(checkpoints_path+"_config.json")
-            ), "Checkpoint not found."
+            ), "Checkpoint not found: %s. " % checkpoints_path+"_config.json"
     model_config = json.loads(
         open(checkpoints_path+"_config.json", "r").read())
     if epoch is None:
         latest_weights = predict.find_latest_checkpoint(checkpoints_path)
     else:
         latest_weights = checkpoints_path + ".%05d" % epoch
-    # assert (latest_weights is not None), "Checkpoint not found."
+    assert (latest_weights is not None), "Checkpoint not found."
+
+    if input_height is None:
+        input_height = model_config['input_width']
+
+    if input_width is None:
+        input_width = model_config['input_width']
+
     model = model_from_name[model_config['model_class']](
-        model_config['n_classes'], input_height=model_config['input_height'],
-        input_width=model_config['input_width'], channels=model_config['channels'])
+        model_config['n_classes'], input_height=input_height,
+        input_width=input_width, channels=model_config['channels'])
     print("loaded weights ", latest_weights)
     status = model.load_weights(latest_weights)
 
     if status is not None:
         status.expect_partial()
 
+    print('Model: %s, Input %s -> Output %s' % (model.model_name, str(model.input_shape), str(model.output_shape)) )
+
     return model
 
 if __name__ == '__main__':
 
-    model = model_from_checkpoint_path('logs\\vgg_unet_2021-09-25_001534.581033\\checkpoints\\vgg_unet', 8)
+    model = model_from_checkpoint_path('logs\\vgg_unet_2021-09-25_001534.581033\\checkpoints\\vgg_unet', epoch=None, input_width=64, input_height=64)
     #
     pr = predict.predict(model=model,
                     inp='data/mars_data_20210923/test_0.1/images/unnamed_testing_2_patch_011_00720_00480_r0.10.png ',

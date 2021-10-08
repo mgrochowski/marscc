@@ -7,15 +7,13 @@ from pathlib import Path
 import click
 import cv2
 import numpy as np
-from skimage.morphology import closing, square
-from skimage.segmentation import clear_border
 
-from utils.image import image_to_labelmap, labelmap_to_image
-from generate_training_data import split_image
-from keras_segmentation_mod.predict import predict_multiple
-from predict_ks import model_from_checkpoint_path
-from keras_segmentation_mod.data_utils.data_loader import class_colors
 from detect_cones import detect_cones_and_craters, print_detections, draw_regions2
+from generate_training_data import split_image
+from keras_segmentation.data_utils.data_loader import class_colors
+from keras_segmentation.predict import predict_multiple
+from predict_ks import model_from_checkpoint_path
+from utils.image import image_to_labelmap, labelmap_to_image
 
 
 @click.command()
@@ -27,10 +25,8 @@ from detect_cones import detect_cones_and_craters, print_detections, draw_region
 @click.option('--resize_ratio', default=1.0, help='Scaling ratio')
 @click.option('--checkpoint_path', default=None, help='Path to model checkpoint')
 @click.option('--output_dir', default='detection_output', help='Output directory')
-
 def run(input_file, mask_file, output_width=450, output_height=450, overlap=100, resize_ratio=0.1,
         output_dir='detection_output', checkpoint_path='models/some_checkpoint'):
-
     image = cv2.imread(input_file, cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise Exception('Cant open file %s' % input_file)
@@ -63,8 +59,10 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
         # code labels as blue channel in RGB image
         pad_zeros = np.zeros((labels.shape[0], labels.shape[1], 2)).astype('uint8')
         ann_img = np.concatenate((np.expand_dims(labels, axis=2), pad_zeros), axis=2)
+
     padding = max(output_height, output_width) - overlap
-    patches = split_image(image, ann_img, output_width=output_width, output_height=output_height, overlap=overlap, padding=padding)
+    patches = split_image(image, ann_img, output_width=output_width, output_height=output_height, overlap=overlap,
+                          padding=padding)
 
     input_images, input_ann = [], []
     for i, patch in enumerate(patches):
@@ -75,14 +73,13 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
     model = model_from_checkpoint_path(checkpoint_path, 30)
     print('Model input shape', model.input_shape)
 
-    inps =input_images
+    inps = input_images
 
     # segmentation
     predictions = predict_multiple(model=model, inps=inps, inp_dir=None, out_dir=None,
-                     checkpoints_path=None, overlay_img=False,
-                     class_names=None, show_legends=False, colors=class_colors,
-                     prediction_width=output_width, prediction_height=output_height, read_image_type=1)
-
+                                   checkpoints_path=None, overlay_img=False,
+                                   class_names=None, show_legends=False, colors=class_colors,
+                                   prediction_width=output_width, prediction_height=output_height, read_image_type=1)
 
     # join
     output_image = np.zeros((h_new + padding, w_new + padding))
@@ -112,7 +109,8 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
     file_path = str(o_dir / i_name) + '_segmentation.png'
     cv2.imwrite(file_path, output_image_rgb)
 
-    results = detect_cones_and_craters(labels=output_image[:h_new, :w_new], min_area=10, min_perimeter=5, min_solidity=0.5)
+    results = detect_cones_and_craters(labels=output_image[:h_new, :w_new], min_area=10, min_perimeter=5,
+                                       min_solidity=0.5)
 
     log = print_detections(results)
     i_name = Path(input_file).stem
@@ -128,30 +126,7 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
     print('Results saved in %s' % output_dir)
 
 
-    # # create output directories structure
-    # output_images = Path(output_dir + '/images/')
-    # output_annotations = Path(output_dir + '/annotations/')
-    # Path.mkdir(output_images, exist_ok=True, parents=True)
-    # Path.mkdir(output_annotations, exist_ok=True)
-    #
-    # img_name = Path(input_file).stem
-    # img_ext = Path(input_file).suffix
-    #
-    # # cv2.imwrite(str(output_images / img_name) + '_resized' + img_ext, image)
-    # # cv2.imwrite(str(output_annotations / img_name) + '_resized' + img_ext, mask_img)
-    # #
-    # #
-    # for i, patch in enumerate(patches):
-    #     patch_x, patch_y, patch_info = patch
-    #     file_name =  '%s_patch_%03d_%05d_%05d%s' % (img_name, i, patch_info[0], patch_info[1], img_ext)
-    #     cv2.imwrite(str(output_images / file_name), patch_x)
-    #     cv2.imwrite(str(output_annotations / file_name), patch_y)
-    #
-    # print('Saved %d patches to: %s' % (len(patches), output_dir))
-
-
 if __name__ == '__main__':
-
     input_file = 'data\\test\\scale_500K\\unnamed_testing_1.png'
     mask_file = 'data\\test\\scale_500K\\unnamed_testing_1_mask.png'
     output_width = 480
