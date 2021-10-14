@@ -67,7 +67,11 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
     for i, patch in enumerate(patches):
         _, patch_info = patch
         sx, sy, ex, ey = patch_info
-        output_image[sy:ey, sx:ex] = predictions[i]
+
+        prediction = predictions[i]
+        if (ey-sy, ex-sx) != prediction.shape[:2]:
+            prediction = cv2.resize(prediction, (ey-sy, ex-sx), interpolation=cv2.INTER_NEAREST)
+        output_image[sy:ey, sx:ex] = prediction
 
     # save results
     o_dir = Path(output_dir)
