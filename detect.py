@@ -1,4 +1,4 @@
-# Detect cones and craters on annotation image
+# Detect cones and craters on (original) annotation image
 
 from __future__ import print_function, division, absolute_import, unicode_literals
 
@@ -21,7 +21,7 @@ from utils.image import image_to_labelmap, label_map
 
 @click.command()
 @click.option('--input_file', default=None, help='Input file with annotations (labels)')
-@click.option('--input_image', default=None, help='Input file (image)')
+@click.option('--input_image', default=None, help='Input image with Mars surface')
 @click.option('--min_area', default=10, help='Minimum object area [in ptx]')
 @click.option('--min_perimeter', default=5, help='Minimum object perimeter [in ptx]')
 @click.option('--min_solidity', default=0.5, help='Minimum object solidity')

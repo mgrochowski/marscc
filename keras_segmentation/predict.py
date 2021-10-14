@@ -17,24 +17,38 @@ from .models.config import IMAGE_ORDERING
 
 random.seed(DATA_LOADER_SEED)
 
+def model_from_checkpoint_path(checkpoints_path, epoch=None, input_height=None, input_width=None):
 
-def model_from_checkpoint_path(checkpoints_path):
+    import os
+    import json
+    from keras_segmentation.models.all_models import model_from_name
 
-    from .models.all_models import model_from_name
     assert (os.path.isfile(checkpoints_path+"_config.json")
-            ), "Checkpoint not found."
+            ), "Checkpoint not found: %s. " % checkpoints_path+"_config.json"
     model_config = json.loads(
         open(checkpoints_path+"_config.json", "r").read())
-    latest_weights = find_latest_checkpoint(checkpoints_path)
+    if epoch is None:
+        latest_weights = find_latest_checkpoint(checkpoints_path)
+    else:
+        latest_weights = checkpoints_path + ".%05d" % epoch
     assert (latest_weights is not None), "Checkpoint not found."
+
+    if input_height is None:
+        input_height = model_config['input_width']
+
+    if input_width is None:
+        input_width = model_config['input_width']
+
     model = model_from_name[model_config['model_class']](
-        model_config['n_classes'], input_height=model_config['input_height'],
-        input_width=model_config['input_width'])
+        model_config['n_classes'], input_height=input_height,
+        input_width=input_width, channels=model_config['channels'])
     print("loaded weights ", latest_weights)
     status = model.load_weights(latest_weights)
 
     if status is not None:
         status.expect_partial()
+
+    # print('Model: %s, Input %s -> Output %s' % (model.model_name, str(model.input_shape), str(model.output_shape)) )
 
     return model
 

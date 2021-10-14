@@ -8,41 +8,34 @@ import click
 import cv2
 import numpy as np
 
-from detect_cones import detect_cones_and_craters, print_detections, draw_regions2
-from generate_training_data import split_image
+from detect import detect_cones_and_craters, print_detections, draw_regions2
 from keras_segmentation.data_utils.data_loader import class_colors
-from keras_segmentation.predict import predict_multiple
-from predict_ks import model_from_checkpoint_path
-from utils.image import image_to_labelmap, labelmap_to_image
+from keras_segmentation.predict import predict_multiple, model_from_checkpoint_path
+from utils.image import labelmap_to_image, split_image
 
 
 @click.command()
-@click.option('--input_file', default=None, help='Input file')
-@click.option('--mask_file', default=None, help='Mask image')
-@click.option('--output_width', default=450, help='Width of output patch [in ptx]')
-@click.option('--output_height', default=450, help='Height of output patch [in ptx]')
-@click.option('--overlap', default=100, help='Patch overlaping size (in pixels or ratio)')
+@click.option('--input_file', default=None, help='Input image with Mars surface')
+@click.option('--input_width', default=None, help='Model input width [in ptx]', type=int)
+@click.option('--input_height', default=None, help='Model input height [in ptx]', type=int)
+@click.option('--overlap', default=0, help='Patch overlaping size (in pixels or ratio)')
 @click.option('--resize_ratio', default=1.0, help='Scaling ratio')
 @click.option('--checkpoint_path', default=None, help='Path to model checkpoint')
 @click.option('--output_dir', default='detection_output', help='Output directory')
-def run(input_file, mask_file, output_width=450, output_height=450, overlap=100, resize_ratio=0.1,
+def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
         output_dir='detection_output', checkpoint_path='models/some_checkpoint'):
+
     image = cv2.imread(input_file, cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise Exception('Cant open file %s' % input_file)
 
     h, w = image.shape[0], image.shape[1]
+    print('Image original size: %dx%d' % (h, w))
 
-    mask_img = None
-    if mask_file is not None:
-        mask_img = cv2.imread(mask_file)
+    model = model_from_checkpoint_path(checkpoint_path, input_width=input_width, input_height=input_height)
+    print('Model input shape', model.input_shape)
 
-        if mask_img is None:
-            raise Exception('Cant open file %s' % mask_file)
-
-        assert h == mask_img.shape[0] and w == mask_img.shape[1]
-
-    print('Input size: %dx%d' % (h, w))
+    _, input_width, input_height, _ = model.input_shape
 
     h_new, w_new = h, w
     if resize_ratio != 1.0:
@@ -50,28 +43,15 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
         w_new = int(w * resize_ratio)
 
         image = cv2.resize(image, (h_new, w_new), interpolation=cv2.INTER_AREA)
-        if mask_img is not None:
-            mask_img = cv2.resize(mask_img, (h_new, w_new), interpolation=cv2.INTER_NEAREST_EXACT)
-
-    if mask_img is not None:
-        labels = image_to_labelmap(mask_img)
-
-        # code labels as blue channel in RGB image
-        pad_zeros = np.zeros((labels.shape[0], labels.shape[1], 2)).astype('uint8')
-        ann_img = np.concatenate((np.expand_dims(labels, axis=2), pad_zeros), axis=2)
 
     padding = max(output_height, output_width) - overlap
-    patches = split_image(image, ann_img, output_width=output_width, output_height=output_height, overlap=overlap,
+    patches = split_image(image, output_width=input_width, output_height=input_height, overlap=overlap,
                           padding=padding)
 
-    input_images, input_ann = [], []
+    input_images = []
     for i, patch in enumerate(patches):
-        patch_x, patch_y, patch_info = patch
+        patch_x, patch_info = patch
         input_images.append(patch_x)
-        input_ann.append(patch_y)
-
-    model = model_from_checkpoint_path(checkpoint_path, 30)
-    print('Model input shape', model.input_shape)
 
     inps = input_images
 
@@ -83,22 +63,11 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
 
     # join
     output_image = np.zeros((h_new + padding, w_new + padding))
-    # output_image2 = np.zeros((h_new + padding, w_new + padding))
 
     for i, patch in enumerate(patches):
-        _, _, patch_info = patch
+        _, patch_info = patch
         sx, sy, ex, ey = patch_info
         output_image[sy:ey, sx:ex] = predictions[i]
-        # output_image[sy, sx:ex] = 3
-        # output_image[ey, sx:ex] = 3
-        # output_image[sy:ey, sx] = 3
-        # output_image[sy:ey, ex] = 3
-
-        # output_image2[sy:ey, sx:ex] = inps[i]
-        # output_image2[sy, sx:ex] = 0
-        # output_image2[ey, sx:ex] = 0
-        # output_image2[sy:ey, sx] = 0
-        # output_image2[sy:ey, ex] = 0
 
     # save results
     o_dir = Path(output_dir)

@@ -1,24 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-DATA_URL = 'https://www.is.umk.pl/~grochu/mars/mars_training_data.zip'
-INPUT_SIZE = (256, 256)
-
-import numpy as np
-import cv2
 from pathlib import Path
-import urllib
+
+import cv2
+import numpy as np
 
 rgb_map = {
-       'background' : [255, 255, 255],
-       'cone' :  [190, 190, 255],
-       'crater' :  [115, 178, 115]
+       'background': [255, 255, 255],
+       'cone':  [190, 190, 255],
+       'crater':  [115, 178, 115]
    }
 
 label_map = {
-      'background' : 0,
-      'cone' : 1,
-      'crater' : 2
+      'background': 0,
+      'cone': 1,
+      'crater': 2
     }
 
 label_list = [
@@ -106,4 +103,39 @@ def save_samples(save_dir, images, labels):
         cv2.imwrite(str(Path(save_dir).joinpath('%05d_mask.png' % k)), mask_img)
         k = k + 1
 
+
+def split_image(input_image, output_width=450, output_height=450, overlap=100, padding=None):
+
+    if padding is None: padding = overlap
+    patches = []
+
+    x_start, y_start = 0, 0
+
+    height, width = input_image.shape[0], input_image.shape[1]
+
+    image = input_image
+
+    # padding: add 0 at right and bottom edges of image
+    if padding > 0:
+        if image.ndim == 2:
+            image = np.pad(input_image, [[0, padding], [0, padding]])
+        elif image.ndim == 3:
+            image = np.pad(input_image, [[0, padding], [0, padding], [0, 0]])
+
+    while y_start + output_height <= height + padding:
+
+        y_end = y_start + output_height
+
+        while x_start + output_width <= width + padding:
+
+            x_end = x_start + output_width
+
+            patch = image[y_start:y_end, x_start:x_end]
+            patches.append((patch, (x_start, y_start, x_end, y_end)))
+            x_start = x_start + output_width - overlap
+
+        x_start = 0
+        y_start = y_start + output_height - overlap
+
+    return patches
 
