@@ -32,8 +32,12 @@ print(physical_devices)
 
 # input requirement height % 192
 # model = pspnet.pspnet(n_classes=3, input_height=384, input_width=384, channels=1 )
-model = pspnet.pspnet_50( n_classes=3, input_height=473, input_width=473, channels=1 )
+# model = pspnet.pspnet_50( n_classes=3, input_height=473, input_width=473, channels=1 )
 # input_shape == (473, 473) or  (713, 713):
+# model = pspnet.pspnet_101( n_classes=3, input_height=473, input_width=473, channels=1 )
+
+# model = segnet.segnet(n_classes=3, input_height=480, input_width=480, channels=1 )
+model = segnet.vgg_segnet(n_classes=3, input_height=480, input_width=480, channels=1 )
 
 
 timestamp = str(datetime.now()).replace(' ', '_').replace(':','')
