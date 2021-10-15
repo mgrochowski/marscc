@@ -12,15 +12,6 @@ from keras.optimizers import Adam
 physical_devices = tf.config.list_physical_devices('GPU')
 print(physical_devices)
 #
-# from tensorflow.compat.v1 import ConfigProto
-# from tensorflow.compat.v1 import InteractiveSession
-#
-#
-# config = ConfigProto()
-# config.gpu_options.allow_growth = True
-#     # session = InteractiveSession(config=config)
-#
-# session = InteractiveSession(config=config)
 
 # model = unet_mini(n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = unet(n_classes=3, input_height=480, input_width=480, channels=1 )
@@ -38,7 +29,6 @@ print(physical_devices)
 
 # model = segnet.segnet(n_classes=3, input_height=480, input_width=480, channels=1 )
 model = segnet.vgg_segnet(n_classes=3, input_height=480, input_width=480, channels=1 )
-
 
 timestamp = str(datetime.now()).replace(' ', '_').replace(':','')
 
