@@ -34,6 +34,9 @@ def train_action(command_parser):
 
     parser.add_argument("--steps_per_epoch", type=int, default=512)
     parser.add_argument("--optimizer_name", type=str, default="adam")
+    parser.add_argument('--do_augment', action='store_true')
+
+    parser.add_argument("--read_image_type", type=int, default=1)
 
     def action(args):
         return train(model=args.model_name,
@@ -53,7 +56,9 @@ def train_action(command_parser):
                      auto_resume_checkpoint=args.auto_resume_checkpoint,
                      load_weights=args.load_weights,
                      steps_per_epoch=args.steps_per_epoch,
-                     optimizer_name=args.optimizer_name)
+                     optimizer_name=args.optimizer_name,
+                     do_augment=args.do_augment,
+                     read_image_type=args.read_image_type)
 
     parser.set_defaults(func=action)
 
@@ -64,16 +69,19 @@ def predict_action(command_parser):
     parser.add_argument("--checkpoints_path", type=str, required=True)
     parser.add_argument("--input_path", type=str, default="", required=True)
     parser.add_argument("--output_path", type=str, default="", required=True)
+    parser.add_argument("--read_image_type", type=int, default=1)
 
     def action(args):
         input_path_extension = args.input_path.split('.')[-1]
         if input_path_extension in ['jpg', 'jpeg', 'png']:
             return predict(inp=args.input_path, out_fname=args.output_path,
-                           checkpoints_path=args.checkpoints_path)
+                           checkpoints_path=args.checkpoints_path,
+                           read_image_type=args.read_image_type)
         else:
             return predict_multiple(inp_dir=args.input_path,
                                     out_dir=args.output_path,
-                                    checkpoints_path=args.checkpoints_path)
+                                    checkpoints_path=args.checkpoints_path,
+                                    read_image_type=args.read_image_type)
 
     parser.set_defaults(func=action)
 
@@ -101,11 +109,13 @@ def evaluate_model_action(command_parser):
     parser.add_argument("--images_path", type=str, required=True)
     parser.add_argument("--segs_path", type=str, required=True)
     parser.add_argument("--checkpoints_path", type=str, required=True)
+    parser.add_argument("--read_image_type", type=int, default=1)
 
     def action(args):
         print(evaluate(
             inp_images_dir=args.images_path, annotations_dir=args.segs_path,
-            checkpoints_path=args.checkpoints_path))
+            checkpoints_path=args.checkpoints_path,
+            read_image_type=args.read_image_type))
 
     parser.set_defaults(func=action)
 
