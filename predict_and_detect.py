@@ -44,7 +44,7 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
 
         image = cv2.resize(image, (h_new, w_new), interpolation=cv2.INTER_AREA)
 
-    padding = max(output_height, output_width) - overlap
+    padding = max(input_height, input_width) - overlap
     patches = split_image(image, output_width=input_width, output_height=input_height, overlap=overlap,
                           padding=padding)
 
@@ -100,14 +100,5 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
 
 
 if __name__ == '__main__':
-    input_file = 'data\\test\\scale_500K\\unnamed_testing_1.png'
-    mask_file = 'data\\test\\scale_500K\\unnamed_testing_1_mask.png'
-    output_width = 480
-    output_height = 480
-    overlap = 0
-    resize_ratio = 0.1
-    output_file = 'detection_output.png'
-    checkpoint_path = 'logs\\unet_mini_2021-09-27_003743.848447\\checkpoints\\unet_mini'
-    # run(input_file=input_file, mask_file=mask_file, output_width=output_width, output_height=output_height,
-    #     overlap=overlap, resize_ratio=resize_ratio, output_file=output_file, checkpoint_path=checkpoint_path)
+
     run()
