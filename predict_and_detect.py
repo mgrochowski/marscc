@@ -59,7 +59,7 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
     predictions = predict_multiple(model=model, inps=inps, inp_dir=None, out_dir=None,
                                    checkpoints_path=None, overlay_img=False,
                                    class_names=None, show_legends=False, colors=class_colors,
-                                   prediction_width=output_width, prediction_height=output_height, read_image_type=1)
+                                   prediction_width=input_width, prediction_height=input_height, read_image_type=1)
 
     # join
     output_image = np.zeros((h_new + padding, w_new + padding))
