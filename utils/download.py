@@ -50,7 +50,7 @@ def download_and_unzip(url, target_dir=DATA_DIR, delete_source=True):
         zf.close()
         if delete_source:
             print('Deleting:     %s' % str(zip_file))
-            zip_file.unlink(missing_ok=False)
+            zip_file.unlink()
     else:
         print('Download ERROR')
 
