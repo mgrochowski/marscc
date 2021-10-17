@@ -1,0 +1,1 @@
+{"model_class": "unet_mini", "n_classes": 3, "input_height": 480, "input_width": 480, "output_height": 480, "output_width": 480, "channels": 1}
