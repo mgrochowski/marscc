@@ -9,6 +9,9 @@ from pathlib import Path
 import tensorflow as tf
 from keras.optimizers import Adam
 
+from utils.download import download_training_data
+download_training_data()
+
 physical_devices = tf.config.list_physical_devices('GPU')
 print(physical_devices)
 #
@@ -28,6 +31,7 @@ print(physical_devices)
 # model = pspnet.pspnet_101( n_classes=3, input_height=473, input_width=473, channels=1 )
 
 # model = segnet.segnet(n_classes=3, input_height=480, input_width=480, channels=1 )
+# model = segnet.vgg_segnet(n_classes=3, input_height=480, input_width=480, channels=1 )
 model = segnet.vgg_segnet(n_classes=3, input_height=480, input_width=480, channels=1 )
 
 timestamp = str(datetime.now()).replace(' ', '_').replace(':','')
