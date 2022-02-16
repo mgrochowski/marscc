@@ -23,7 +23,7 @@ https://colab.research.google.com/drive/1DZkEFsjyv-4P4nDqW9ojRxVNKaperUft?usp=sh
 
 ## Mars surface segmentation results
 
-Segmentation results using varius deep learning models are reported in [segmentation_results.ipynb] (segmentation_results.ipynb) notebook.
+Segmentation results using varius deep learning models are reported in [segmentation_results.ipynb](segmentation_results.ipynb) notebook.
 
 ## Usage via command line
 ### Train UNet model on Mars data
@@ -124,6 +124,8 @@ Transform the image to the format required by the ``keras_segmentation``. The im
 python generate_training_data.py --input_file "data/test/scale_500K/unnamed_testing_1.png" \
                                  --mask_file "data/test/scale_500K/unnamed_testing_1_mask.png" \
                                  --resize_ratio 0.1 
-                                 --output_width 480 \ --output_height 480 \ --overlap 50 \
+                                 --output_width 480 \ 
+                                 --output_height 480 \ 
+                                 --overlap 50 \
                                  --output_dir "data/training/" 
 ```
