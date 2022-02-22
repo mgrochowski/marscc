@@ -3,9 +3,11 @@ from urllib import request
 from urllib.parse import urlparse
 import urllib, zipfile
 
-MARS_IMG_URL='https://www.fizyka.umk.pl/~grochu/mars/mars_images_scale_1_500K.zip'
-MARS_TRAIN_URL='https://www.fizyka.umk.pl/~grochu/mars/mars_data_20210923.zip'
-VGG_UNET_URL='https://www.fizyka.umk.pl/~grochu/mars/models/vgg_unet_2021-09-29_132526.566811.zip'
+MARS_IMG_URL='https:///www.fizyka.umk.pl/~grochu/mars/mars_images_scale_1_500K-2022-02-16.zip'
+MARS_TRAIN_URL='https:///www.fizyka.umk.pl/~grochu/mars/mars_data_20220216.zip'
+
+MARS_IMG_TARGET='mars_images_scale_1_500K'
+MARS_TRAIN_TARGET='mars_data_20220216'
 
 MODELS_DIR='models'
 DATA_DIR='data'
@@ -15,13 +17,20 @@ MODELS = {
             'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/vgg_unet_2021-09-29_132526.566811.zip',
             'tag':  'vgg_unet_2021-09-29_132526.566811',
             'name': 'vgg_unet'
+     },
+    'vgg_unet2': {
+            'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/vgg_unet_2022-01-19_104248.131962.zip',
+            'tag':  'vgg_unet_2022-01-19_104248.131962',
+            'name': 'vgg_unet'
+     },
+    'unet': {
+            'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/unet_2022-02-17_094711.923161.zip',
+            'tag':  'unet_2022-02-17_094711.923161',
+            'name': 'unet'
      }
 }
 
 DEFAULT_MODEL='vgg_unet'
-
-MARS_IMG_TARGET='mars_images_scale_1_500K'
-MARS_TRAIN_TARGET='mars_data_20210923'
 
 from tqdm import tqdm
 
@@ -95,5 +104,5 @@ if __name__ == '__main__':
 
     # download_original_images()
     download_training_data()
-    download_model()
+    download_model(target_dir='model_tmp', name='vgg_unet2')
 
