@@ -12,7 +12,7 @@ from detect import detect_cones_and_craters, print_detections, draw_regions2
 from keras_segmentation.data_utils.data_loader import class_colors
 from keras_segmentation.predict import predict_multiple, model_from_checkpoint_path
 from utils.image import labelmap_to_image, split_image
-from utils.download import download_vgg_unet_checkpoint, VGG_UNET_TARGET
+from utils.download import download_model
 
 @click.command()
 @click.option('--input_file', default=None, help='Input image with Mars surface')
@@ -57,8 +57,7 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
 def predict_large_image(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1, checkpoint_path=None):
 
     if checkpoint_path is None:
-        download_vgg_unet_checkpoint(target_dir='models')
-        checkpoint_path = str(Path('models/' + VGG_UNET_TARGET + '/vgg_unet'))
+        checkpoint_path = download_model(target_dir='models')
     else:
         checkpoint_path = str(Path(checkpoint_path))
 
