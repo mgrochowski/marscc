@@ -3,17 +3,34 @@ from urllib import request
 from urllib.parse import urlparse
 import urllib, zipfile
 
-MARS_IMG_URL='https://www.fizyka.umk.pl/~grochu/mars/mars_images_scale_1_500K.zip'
-MARS_TRAIN_URL='https://www.fizyka.umk.pl/~grochu/mars/mars_data_20210923.zip'
-VGG_UNET_URL='https://www.fizyka.umk.pl/~grochu/mars/models/vgg_unet_2021-09-29_132526.566811.zip'
+MARS_IMG_URL='https:///www.fizyka.umk.pl/~grochu/mars/mars_images_scale_1_500K-2022-02-16.zip'
+MARS_TRAIN_URL='https:///www.fizyka.umk.pl/~grochu/mars/mars_data_20220216.zip'
+
+MARS_IMG_TARGET='mars_images_scale_1_500K'
+MARS_TRAIN_TARGET='mars_data_20220216'
 
 MODELS_DIR='models'
 DATA_DIR='data'
 
-MARS_IMG_TARGET='mars_images_scale_1_500K'
-MARS_TRAIN_TARGET='mars_data_20210923'
-VGG_UNET_TARGET='vgg_unet_2021-09-29_132526.566811'
+MODELS = {
+    'vgg_unet': {
+            'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/vgg_unet_2021-09-29_132526.566811.zip',
+            'tag':  'vgg_unet_2021-09-29_132526.566811',
+            'name': 'vgg_unet'
+     },
+    'vgg_unet2': {
+            'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/vgg_unet_2022-01-19_104248.131962.zip',
+            'tag':  'vgg_unet_2022-01-19_104248.131962',
+            'name': 'vgg_unet'
+     },
+    'unet': {
+            'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/unet_2022-02-17_094711.923161.zip',
+            'tag':  'unet_2022-02-17_094711.923161',
+            'name': 'unet'
+     }
+}
 
+DEFAULT_MODEL='vgg_unet'
 
 from tqdm import tqdm
 
@@ -63,14 +80,16 @@ def download_training_data(target_dir=DATA_DIR):
     else:
         download_and_unzip(MARS_TRAIN_URL, target_dir)
 
+def download_model(target_dir=MODELS_DIR, name=DEFAULT_MODEL):
 
-def download_vgg_unet_checkpoint(target_dir=MODELS_DIR):
-    model_dir = Path(target_dir + '/' + VGG_UNET_TARGET)
+    model_dir = Path(target_dir + '/' + MODELS[name]['tag'])
     if model_dir.exists():
         print('Model checkpoint directory exists: %s' % str(model_dir))
     else:
-        download_and_unzip(VGG_UNET_URL, target_dir)
+        download_and_unzip(MODELS[name]['url'], target_dir)
 
+    checkpoint_path = str( model_dir / Path(MODELS[name]['name'] ))
+    return checkpoint_path
 
 def download_original_images(target_dir=DATA_DIR):
 
@@ -85,5 +104,5 @@ if __name__ == '__main__':
 
     # download_original_images()
     download_training_data()
-    download_vgg_unet_checkpoint()
+    download_model(target_dir='model_tmp', name='vgg_unet2')
 
