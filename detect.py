@@ -151,7 +151,7 @@ def print_detections(detected):
     # print (sorted by perimeter)
     for i, label in enumerate(['cone', 'crater']):
         res = detected[label]
-        text += '\n%s\n\n' % label
+        text += '\n%s N=%d\n\n' % (label, len(res))
         text += 'Region      area                   bbox          centroid        perimeter  solidity\n'
 
         for region in sorted(res, key=lambda x: getattr(x, 'perimeter')):
@@ -174,6 +174,114 @@ def detectoin(x, label=1):
     # label image regions
     label_image = label_region(cleared, background=0)
     return label_image
+
+
+def class_report(cm, target_names=None):
+
+    print("Confussion matrix")
+    print("true \ predicted")
+
+    print(*[ ("%10s  " % target_names[i]) + str(row)[1:-1] for i, row in enumerate(cm)], sep='\n')
+
+    print("\n     label    precision  recall  f1-score   support")
+    for i in range(cm.shape[0]):
+        n = cm[i,:].sum()
+        if n > 0:
+            rec = cm[i,i] / n
+        else:
+            rec = 0.0
+        prec = cm[i,i] / cm[:,i].sum()
+        if prec + rec > 0:
+            f1 = 2 * (prec * rec) / (prec + rec)
+        else:
+            f1 = 0.0
+        print("%10s %10.2f %10.2f %10.2f %3d" % (target_names[i], prec, rec, f1, n ))
+
+import numpy as np
+
+def detection_raport(true_regions, predicted_regions):
+
+    label_names = []
+    label_idx = { }
+
+    predicted_reg_list = []
+    target_reg_list = []
+
+    for i, label in enumerate(true_regions):
+
+        assert label in predicted_regions
+
+        label_names.append(label)
+        label_idx[label] = i
+
+        for r in predicted_regions[label]:
+            predicted_reg_list.append((r, label))
+        for r in true_regions[label]:
+            target_reg_list.append((r, label))
+
+    bcg_idx = len(label_names)   # background index
+    label_names.append('backgroubd')
+
+    # count mached and conf-mat
+    mached_target = np.zeros((len(target_reg_list, )))
+    mached_pred = np.zeros((len(predicted_reg_list, )))
+
+    conff = np.zeros((len(label_names), len(label_names)), dtype=np.int)
+
+    summary = { 'errors': [], 'missing': [], 'added': [] , 'confusion_matrix': None }
+    # y_true, y_pred  = [], []
+    for i, tr in enumerate(target_reg_list):
+        for j, sr in enumerate(predicted_reg_list):
+            in_ptx = interesction_points(tr[0].coords, sr[0].coords)
+            if len(in_ptx) > 0:
+                mached_target[i] = mached_target[i] + 1
+                mached_pred[j] = mached_pred[j] + 1
+                # print(i, j, len(in_ptx), tr[1], sr[1])
+                conff[label_idx[tr[1]], label_idx[sr[1]]] = conff[label_idx[tr[1]], label_idx[sr[1]]] + 1
+                if tr[1] != sr[1]:
+                    summary['errors'].append((tr, sr))
+                # y_true.append(label_idx[tr[1]])
+                # y_pred.append(label_idx[sr[1]])
+
+    # print(mached_target)
+    # print(mached_pred)
+
+    # not detected target ROIs mark ad background predictions
+    for tr, mt in zip(target_reg_list, mached_target):
+        if mt == 0:
+            # y_true.append(label_idx[tr[1]])
+            # y_pred.append(bcg_idx)
+            conff[label_idx[tr[1]], bcg_idx] = conff[label_idx[tr[1]], bcg_idx] + 1
+            summary['missing'].append(tr)
+
+    # prediction of regions not mached to target ROIs
+    for pr, mp in zip(predicted_reg_list, mached_pred):
+        if mp == 0:
+            # y_true.append(bcg_idx)
+            # y_pred.append(label_idx[pr[1]])
+            conff[bcg_idx, label_idx[pr[1]]] = conff[bcg_idx, label_idx[pr[1]]] + 1
+            summary['added'].append(pr)
+
+    class_report(conff, label_names)
+    summary['confusion_matrix'] = conff
+
+    return summary
+
+    from sklearn.metrics import  confusion_matrix, classification_report
+    # cm = confusion_matrix(y_true, y_pred)
+    # print(cm)
+    # print(classification_report(y_true, y_pred, target_names=label_names))
+
+def interesction_points(x, y, treshold=1):
+
+    points = []
+
+    for ex in x:
+        if np.any(np.all(ex == y, axis=1)):
+            points.append(ex)
+        if len(points) >= treshold: break
+
+    return points
 
 
 if __name__ == '__main__':
