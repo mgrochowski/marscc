@@ -9,10 +9,11 @@ import cv2
 import numpy as np
 
 from detect import detect_cones_and_craters, print_detections, draw_regions2
-from keras_segmentation.data_utils.data_loader import class_colors
+from keras_segmentation.data_utils.data_loader import class_colors, get_image_array
 from keras_segmentation.predict import predict_multiple, model_from_checkpoint_path
 from utils.image import labelmap_to_image, split_image
 from utils.download import download_model
+from keras_segmentation.models.config import IMAGE_ORDERING
 
 @click.command()
 @click.option('--input_file', default=None, help='Input image with Mars surface')
@@ -89,13 +90,18 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
         patch_x, patch_info = patch
         input_images.append(patch_x)
 
-    inps = input_images
+    # normalize data
+    input_images = np.array([ get_image_array(input_images, input_width, input_height, ordering=IMAGE_ORDERING) for inp in input_images])
 
     # segmentation
-    predictions = predict_multiple(model=model, inps=inps, inp_dir=None, out_dir=None,
-                                   checkpoints_path=None, overlay_img=False,
-                                   class_names=None, show_legends=False, colors=class_colors,
-                                   prediction_width=input_width, prediction_height=input_height, read_image_type=1)
+    output_segmentation = model.predict(input_images)
+
+    output_height = model.output_height
+    output_width = model.output_width
+    n_img = input_images.shape[0]
+    n_classes = output_segmentation.shape[2]
+    predictions = np.argmax(output_segmentation, axis=2).reshape((n_img, output_height, output_width))
+    segmentation = output_segmentation.reshape((n_img, output_height, output_width, n_classes))
 
     # join
     output_image = np.zeros((h_new + padding, w_new + padding))
