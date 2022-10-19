@@ -266,11 +266,12 @@ def detection_report(true_regions, predicted_regions, iou_treshold=0.5):
 
     conff = np.zeros((len(label_names), len(label_names)), dtype=np.int)
 
-    summary = { 'errors': [], 'missing': [], 'added': [] , 'confusion_matrix': None }
+    summary = { 'errors': [], 'missing': [], 'added': [], 'miss_iou' : [] , 'confusion_matrix': None }
     # y_true, y_pred  = [], []
     for i, tr in enumerate(target_reg_list):
         for j, sr in enumerate(predicted_reg_list):
-            # in_ptx = interesction_points(tr[0].coords, sr[0].coords)
+            # in_ptx = interesction_points(tr[0].coords, sr[0].coords, treshold=len(tr[0].coords))
+            # ptx_iou = float(len(in_ptx)) / (len(tr[0].coords) + len(sr[0].coords) - len(in_ptx))
             iou = iou_bbox(tr[0].bbox, sr[0].bbox)
             if iou > iou_treshold:
                 mached_target[i] = mached_target[i] + 1
@@ -279,25 +280,18 @@ def detection_report(true_regions, predicted_regions, iou_treshold=0.5):
                 conff[label_idx[tr[1]], label_idx[sr[1]]] = conff[label_idx[tr[1]], label_idx[sr[1]]] + 1
                 if tr[1] != sr[1]:
                     summary['errors'].append((tr, sr))
-                # y_true.append(label_idx[tr[1]])
-                # y_pred.append(label_idx[sr[1]])
+            if iou > 0 and iou <= iou_treshold:
+                summary['miss_iou'].append((tr, sr, iou))
 
-    # print(mached_target)
-    # print(mached_pred)
-
-    # not detected target ROIs mark ad background predictions
+    # not detected target ROIs, mark as background predictions
     for tr, mt in zip(target_reg_list, mached_target):
         if mt == 0:
-            # y_true.append(label_idx[tr[1]])
-            # y_pred.append(bcg_idx)
             conff[label_idx[tr[1]], bcg_idx] = conff[label_idx[tr[1]], bcg_idx] + 1
             summary['missing'].append(tr)
 
-    # prediction of regions not mached to target ROIs
+    # prediction of regions not matched to target ROIs
     for pr, mp in zip(predicted_reg_list, mached_pred):
         if mp == 0:
-            # y_true.append(bcg_idx)
-            # y_pred.append(label_idx[pr[1]])
             conff[bcg_idx, label_idx[pr[1]]] = conff[bcg_idx, label_idx[pr[1]]] + 1
             summary['added'].append(pr)
 
@@ -306,10 +300,6 @@ def detection_report(true_regions, predicted_regions, iou_treshold=0.5):
 
     return summary
 
-    from sklearn.metrics import  confusion_matrix, classification_report
-    # cm = confusion_matrix(y_true, y_pred)
-    # print(cm)
-    # print(classification_report(y_true, y_pred, target_names=label_names))
 
 def interesction_points(x, y, treshold=1):
 
