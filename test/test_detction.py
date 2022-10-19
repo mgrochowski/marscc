@@ -9,7 +9,7 @@ import cv2
 from utils.image import  label_map
 
 # Large MARS image in 1:500K scale
-input_file = 'data/test/scale_500K/unnamed_testing_1.png'
+input_file = 'data/test/testing1.png'
 resize_ratio = 0.1
 
 checkpoint_path = 'models/unet_mini_2021-09-27_003743.848447/unet_mini'
@@ -19,7 +19,7 @@ heatmap, image = predict_large_image(input_file, resize_ratio=resize_ratio, chec
 
 prediction = np.argmax(heatmap, axis=2)
 
-mask_file = 'data/test/scale_500K/unnamed_testing_1_mask.png'
+mask_file = 'data/test/testing1_mask.png'
 mask_img = cv2.imread(mask_file, 1)
 mask_img = cv2.resize(mask_img, (image.shape), interpolation=cv2.INTER_NEAREST)
 
