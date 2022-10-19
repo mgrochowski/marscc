@@ -26,12 +26,12 @@ from keras_segmentation.models.config import IMAGE_ORDERING
 def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
         output_dir='detection_output', checkpoint_path=None):
 
-    heatmap, image = predict_large_image(input_file=input_file, input_width=input_width, input_height=input_width,
+    heatmap, image = predict_large_image(input_file=input_file, input_width=input_width, input_height=input_height,
                                        overlap=overlap, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
                                               output_type='heatmap')
 
     output_image = np.argmax(heatmap, axis=2)
-    
+
     # save results
     o_dir = Path(output_dir)
     o_dir.mkdir(parents=True, exist_ok=True)
