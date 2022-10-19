@@ -1,9 +1,12 @@
+import numpy as np
+
 from predict_and_detect import predict_large_image
 from utils.image import image_to_labelmap
-from detect import detection_raport
+from detect import detection_report
 import matplotlib.pyplot as plt
 import cv2
 
+from utils.image import  label_map
 
 # Large MARS image in 1:500K scale
 input_file = 'data/test/scale_500K/unnamed_testing_1.png'
@@ -11,7 +14,10 @@ resize_ratio = 0.1
 
 checkpoint_path = 'models/unet_mini_2021-09-27_003743.848447/unet_mini'
 
-prediction, image = predict_large_image(input_file, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path)
+heatmap, image = predict_large_image(input_file, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
+                                        output_type='heatmap')
+
+prediction = np.argmax(heatmap, axis=2)
 
 mask_file = 'data/test/scale_500K/unnamed_testing_1_mask.png'
 mask_img = cv2.imread(mask_file, 1)
@@ -25,6 +31,17 @@ mask_img = cv2.resize(mask_img, (image.shape), interpolation=cv2.INTER_NEAREST)
 # ax[2].matshow(prediction, vmin=0)
 # ax[2].set_title('Predicted')
 # plt.show()
+
+def add_confidence(results, segmentation):
+
+    labels = results.keys()
+
+    for l in labels:
+        for i in range(len(results[l])):
+            coords = results[l][i].coords
+            # max_softmax = segmentation[]
+
+
 
 # detection
 from detect import detect_cones_and_craters, print_detections, draw_regions2
@@ -53,7 +70,7 @@ plt.figure(figsize=(18, 18))
 plt.imshow(image_reg)
 
 
-summary = detection_raport(mask_results, results)
+summary = detection_report(mask_results, results, iou_treshold=0.5)
 
 # print(summary)
 print('No errors ', len(summary['errors']))

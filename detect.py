@@ -199,7 +199,45 @@ def class_report(cm, target_names=None):
 
 import numpy as np
 
-def detection_raport(true_regions, predicted_regions):
+def iou_bbox(bb1, bb2):
+    """
+    Calculate the Intersection over Union (IoU) of two bounding boxes.
+
+    Parameters
+    ----------
+    bb1 : coords [x1, y1, x2, y2]
+    bb2 : coords [x1, y1, x2, y2]
+
+    Returns
+    -------
+    float  in [0, 1]
+    """
+    assert bb1[0] < bb1[2]
+    assert bb1[1] < bb1[3]
+    assert bb2[0] < bb2[2]
+    assert bb2[1] < bb2[3]
+
+    # determine the coordinates of the intersection rectangle
+    x_left = max(bb1[0], bb2[0])
+    y_top = max(bb1[1], bb2[1])
+    x_right = min(bb1[2], bb2[2])
+    y_bottom = min(bb1[3], bb2[3])
+
+    if x_right < x_left or y_bottom < y_top:
+        return 0.0
+
+    intersection_area = (x_right - x_left) * (y_bottom - y_top)
+
+    bb1_area = (bb1[2] - bb1[0]) * (bb1[3] - bb1[1])
+    bb2_area = (bb2[2] - bb2[0]) * (bb2[3] - bb2[1])
+
+    iou = intersection_area / float(bb1_area + bb2_area - intersection_area)
+    assert iou >= 0.0
+    assert iou <= 1.0
+    return iou
+
+
+def detection_report(true_regions, predicted_regions, iou_treshold=0.5):
 
     label_names = []
     label_idx = { }
@@ -232,8 +270,9 @@ def detection_raport(true_regions, predicted_regions):
     # y_true, y_pred  = [], []
     for i, tr in enumerate(target_reg_list):
         for j, sr in enumerate(predicted_reg_list):
-            in_ptx = interesction_points(tr[0].coords, sr[0].coords)
-            if len(in_ptx) > 0:
+            # in_ptx = interesction_points(tr[0].coords, sr[0].coords)
+            iou = iou_bbox(tr[0].bbox, sr[0].bbox)
+            if iou > iou_treshold:
                 mached_target[i] = mached_target[i] + 1
                 mached_pred[j] = mached_pred[j] + 1
                 # print(i, j, len(in_ptx), tr[1], sr[1])

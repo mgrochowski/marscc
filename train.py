@@ -1,6 +1,6 @@
 # from keras_segmentation.models.unet import vgg_unet, unet, unet_mini, resnet50_unet
 from keras_segmentation.models import pspnet
-from keras_segmentation.models import unet
+# from keras_segmentation.models import unet
 from keras_segmentation.models import segnet
 from keras_segmentation.models import fcn
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
@@ -18,7 +18,7 @@ print(physical_devices)
 #
 
 # model = unet.unet_mini(n_classes=3, input_height=480, input_width=480, channels=1 )
-model = unet.unet(n_classes=3, input_height=480, input_width=480, channels=1 )
+# model = unet.unet(n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = unet.vgg_unet(n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = unet.resnet50_unet(n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = unet.mobilenet_unet(n_classes=3, input_height=480, input_width=480, channels=1 )
@@ -26,6 +26,7 @@ model = unet.unet(n_classes=3, input_height=480, input_width=480, channels=1 )
 
 # model = fcn.fcn_8( n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = fcn.fcn_8_vgg( n_classes=3, input_height=480, input_width=480, channels=1 )
+model = fcn.fcn_8_resnet50( n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = fcn.fcn_32( n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = fcn.fcn_8_vgg( n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = fcn.fcn_32_vgg( n_classes=3, input_height=480, input_width=480, channels=1 )

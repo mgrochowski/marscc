@@ -9,10 +9,11 @@ import cv2
 import numpy as np
 
 from detect import detect_cones_and_craters, print_detections, draw_regions2
-from keras_segmentation.data_utils.data_loader import class_colors
+from keras_segmentation.data_utils.data_loader import class_colors, get_image_array
 from keras_segmentation.predict import predict_multiple, model_from_checkpoint_path
 from utils.image import labelmap_to_image, split_image
 from utils.download import download_model
+from keras_segmentation.models.config import IMAGE_ORDERING
 
 @click.command()
 @click.option('--input_file', default=None, help='Input image with Mars surface')
@@ -25,8 +26,11 @@ from utils.download import download_model
 def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
         output_dir='detection_output', checkpoint_path=None):
 
-    output_image, image = predict_large_image(input_file=input_file, input_width=input_width, input_height=input_width,
-                                       overlap=overlap, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path)
+    heatmap, image = predict_large_image(input_file=input_file, input_width=input_width, input_height=input_height,
+                                       overlap=overlap, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
+                                              output_type='heatmap')
+
+    output_image = np.argmax(heatmap, axis=2)
 
     # save results
     o_dir = Path(output_dir)
@@ -54,7 +58,10 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
     print('Results saved in %s' % output_dir)
 
 
-def predict_large_image(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1, checkpoint_path=None):
+def predict_large_image(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
+                        checkpoint_path=None, output_type='labels'):
+    # output_type: 'labels' - return segmentation as labels, shape [width, height]
+    #              'heatmap' - return segmentation as heatmap, shape [width, heaight, n_classes]
 
     if checkpoint_path is None:
         checkpoint_path = download_model(target_dir='models')
@@ -89,27 +96,41 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
         patch_x, patch_info = patch
         input_images.append(patch_x)
 
-    inps = input_images
+    # normalize data
+    input_images = np.array([ get_image_array(inp, input_width, input_height, ordering=IMAGE_ORDERING) for inp in input_images])
 
     # segmentation
-    predictions = predict_multiple(model=model, inps=inps, inp_dir=None, out_dir=None,
-                                   checkpoints_path=None, overlay_img=False,
-                                   class_names=None, show_legends=False, colors=class_colors,
-                                   prediction_width=input_width, prediction_height=input_height, read_image_type=1)
+    net_predictions = model.predict(input_images)
+
+    output_height = model.output_height
+    output_width = model.output_width
+    n_img = input_images.shape[0]
+    n_classes = net_predictions.shape[2]
+    # predictions = np.argmax(net_predictions, axis=2).reshape((n_img, output_height, output_width))
+    segmentation_heatmap = net_predictions.reshape((n_img, output_height, output_width, n_classes))
 
     # join
-    output_image = np.zeros((h_new + padding, w_new + padding))
+    # output_prediction = np.zeros((h_new + padding, w_new + padding))
+    output_segmentation = np.zeros((h_new + padding, w_new + padding, n_classes))
 
     for i, patch in enumerate(patches):
         _, patch_info = patch
         sx, sy, ex, ey = patch_info
 
-        prediction = predictions[i]
-        if (ey-sy, ex-sx) != prediction.shape[:2]:
-            prediction = cv2.resize(prediction, (ey-sy, ex-sx), interpolation=cv2.INTER_NEAREST)
-        output_image[sy:ey, sx:ex] = prediction
+        # prediction = predictions[i]
+        heatmap = segmentation_heatmap[i]
+        if (ey-sy, ex-sx) != heatmap.shape[:2]:
+            # prediction = cv2.resize(prediction, (ey-sy, ex-sx), interpolation=cv2.INTER_NEAREST)
+            heatmap = cv2.resize(heatmap, (ey - sy, ex - sx), interpolation=cv2.INTER_NEAREST)
 
-    return output_image[:h_new, :w_new], image
+        # output_prediction[sy:ey, sx:ex] = prediction
+        output_segmentation[sy:ey, sx:ex] = heatmap
+
+    x = output_segmentation[:h_new, :w_new]
+    if output_type == 'labels':
+        x = np.argmax(x, axis=2)
+
+    return x, image
 
 
 
