@@ -30,7 +30,7 @@ MODELS = {
      }
 }
 
-DEFAULT_MODEL='vgg_unet'
+DEFAULT_MODEL='vgg_unet2'
 
 from tqdm import tqdm
 
