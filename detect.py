@@ -59,7 +59,7 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
         inp_img = cv2.imread(input_image)
 
         if inp_img is None:
-            print('Warrning: cant open file %s' % input_image)
+            print('Warning: cant open file %s' % input_image)
         else:
             inp_img_reg = draw_regions2(inp_img, results)
             i_name = Path(input_image).stem
@@ -106,7 +106,6 @@ def draw_regions(image, detected, color=None):
     if color is None:
         color = ['red', 'green']
 
-    # # plot
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.imshow(image)
 
@@ -178,7 +177,7 @@ def detectoin(x, label=1):
 
 def class_report(cm, target_names=None):
 
-    print("Confussion matrix")
+    print("Confusion matrix")
     print("true \ predicted")
 
     print(*[ ("%10s  " % target_names[i]) + str(row)[1:-1] for i, row in enumerate(cm)], sep='\n')
