@@ -6,11 +6,19 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# change: 221122
+# rgb_map = {
+#        'background': [255, 255, 255],
+#        'cone':  [190, 190, 255],
+#        'crater':  [115, 178, 115]
+#    }
+
 rgb_map = {
        'background': [255, 255, 255],
-       'cone':  [190, 190, 255],
+       'cone':  [137, 133, 214],
        'crater':  [115, 178, 115]
    }
+
 
 label_map = {
       'background': 0,
