@@ -166,6 +166,14 @@ def plot_predictions(images, targets, predictions):
 
     return fig
 
+def predict_and_plot(input_file, target_file, resize_ratio=1.0, checkpoint_path=None, model=None, imgNorm="sub_and_divide"):
+
+    heatmap, image = predict_large_image(input_file, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
+                                         model=model, output_type='heatmap', imgNorm=imgNorm)
+    target_img = cv2.imread(target_file, 1)
+    target_img = cv2.resize(target_img, (image.shape), interpolation=cv2.INTER_NEAREST)
+    fig = plot_predictions(image, target_img, heatmap)
+    return fig
 
 if __name__ == '__main__':
 
