@@ -1,8 +1,8 @@
 # from keras_segmentation.models.unet import vgg_unet, unet, unet_mini, resnet50_unet
 from keras_segmentation.models import pspnet
-# from keras_segmentation.models import unet
+from keras_segmentation.models import unet
 from keras_segmentation.models import segnet
-from keras_segmentation.models import fcn
+# from keras_segmentation.models import fcn
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard
 from datetime import datetime
 from pathlib import Path
@@ -18,7 +18,7 @@ print(physical_devices)
 #
 
 # model = unet.unet_mini(n_classes=3, input_height=480, input_width=480, channels=1 )
-# model = unet.unet(n_classes=3, input_height=480, input_width=480, channels=1 )
+model = unet.unet(n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = unet.vgg_unet(n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = unet.resnet50_unet(n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = unet.mobilenet_unet(n_classes=3, input_height=480, input_width=480, channels=1 )
@@ -26,7 +26,7 @@ print(physical_devices)
 
 # model = fcn.fcn_8( n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = fcn.fcn_8_vgg( n_classes=3, input_height=480, input_width=480, channels=1 )
-model = fcn.fcn_8_resnet50( n_classes=3, input_height=480, input_width=480, channels=1 )
+# model = fcn.fcn_8_resnet50( n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = fcn.fcn_32( n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = fcn.fcn_8_vgg( n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = fcn.fcn_32_vgg( n_classes=3, input_height=480, input_width=480, channels=1 )
@@ -66,25 +66,34 @@ optimizer_name = 'adam'
 model.train(
     # train_images =  "data/mars_data_20210923/train/images/",
     # train_annotations = "data/mars_data_20210923/train/annotations/",
-    train_images =  "data/mars_data_20220115/train/images/",
-    train_annotations = "data/mars_data_20220115/train/annotations/",
+    # train_images =  "data/mars_data_20220115/train/images/",
+    # train_annotations = "data/mars_data_20220115/train/annotations/",
+    # train_images =  "data/mars_data_20221207/train/images/",
+    # train_annotations = "data/mars_data_20221207/train/annotations/",
+    train_images="data/mars_data_20221207_no_one/train/images/",
+    train_annotations="data/mars_data_20221207_no_one/train/annotations/",
 
     optimizer_name=optimizer_name,
     batch_size = 20,
     steps_per_epoch = 1024,
     checkpoints_path =str(Path(checkpoint_path)),
-    epochs=50,
+    epochs=50,  # real epochs = epochs * (batch * steps) / instances = 50 * (20 * 1024) / 66984 = 15.3
+    # np_one: real_epochs = 63
     # val_images = "data/mars_data_20210923/val/images/",
     # val_annotations = "data/mars_data_20210923/val/annotations",
-    val_images = "data/mars_data_20220115/val/images/",
-    val_annotations = "data/mars_data_20220115/val/annotations",
+    # val_images = "data/mars_data_20221207/val/images/",
+    # val_annotations = "data/mars_data_20221207/val/annotations",
+    val_images="data/mars_data_20221207_no_one/val/images/",
+    val_annotations="data/mars_data_20221207_no_one/val/annotations",
     validate=True,
-    val_steps_per_epoch=1024,
+    # val_steps_per_epoch = 280,  # 5582 (instances) / 20 (batch_size)
+    val_steps_per_epoch=68,  # 1350 (instances) / 20 (batch_size) no_one
+    val_batch_size = 20,
     callbacks=callbacks,
     read_image_type=0,
     do_augment=True,
     ignore_zero_class=False,
     imgNorm = "sub_and_divide",    # x -> [-1, +1]
-    gen_use_multiprocessing=False,
-    verify_dataset=True,
+    # gen_use_multiprocessing=True,  # error on Windows
+    verify_dataset=False,
 )
