@@ -20,6 +20,12 @@ from utils.image import image_to_labelmap, split_image
 @click.option('--debug', default=False, is_flag=True, help='Create debug pictures')
 def run(input_file, mask_file, output_width=450, output_height=450, overlap=100, resize_ratio=0.1,
         output_dir='output_dir', debug=False):
+
+    generate(input_file=input_file, mask_file=mask_file, output_width=output_width, output_height=output_height,
+             overlap=overlap, resize_ratio=resize_ratio, output_dir=output_dir, debug=debug)
+
+def generate(input_file, mask_file, output_width=450, output_height=450, overlap=100, resize_ratio=0.1,
+        output_dir='output_dir', debug=False):
     image = cv2.imread(input_file, cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise Exception('Cant open file %s' % input_file)
