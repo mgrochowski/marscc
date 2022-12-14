@@ -24,7 +24,7 @@ def model_from_checkpoint_path(checkpoints_path, epoch=None, input_height=None, 
     from keras_segmentation.models.all_models import model_from_name
 
     assert (os.path.isfile(checkpoints_path+"_config.json")
-            ), "Checkpoint not found: %s. " % checkpoints_path+"_config.json"
+            ), "Checkpoint not found: %s. " % (checkpoints_path+"_config.json")
     model_config = json.loads(
         open(checkpoints_path+"_config.json", "r").read())
     if epoch is None:

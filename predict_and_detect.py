@@ -60,14 +60,20 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
 
 
 def predict_large_image(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
-                        checkpoint_path=None, output_type='labels', imgNorm="sub_and_divide"):
+                        checkpoint_path=None, model=None, output_type='labels', imgNorm="sub_and_divide"):
     # output_type: 'labels' - return segmentation as labels, shape [width, height]
     #              'heatmap' - return segmentation as heatmap, shape [width, heaight, n_classes]
 
-    if checkpoint_path is None:
-        checkpoint_path = download_model(target_dir='models')
-    else:
-        checkpoint_path = str(Path(checkpoint_path))
+    if model is None:
+        if checkpoint_path is None:
+            checkpoint_path = download_model(target_dir='models')
+        else:
+            checkpoint_path = str(Path(checkpoint_path))
+
+        model = model_from_checkpoint_path(checkpoint_path, input_width=input_width, input_height=input_height)
+
+    print('Model input shape', model.input_shape)
+    _, input_width, input_height, _ = model.input_shape
 
     image = cv2.imread(input_file, cv2.IMREAD_GRAYSCALE)
     if image is None:
@@ -75,11 +81,6 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
 
     h, w = image.shape[0], image.shape[1]
     print('Image original size: %dx%d' % (h, w))
-
-    model = model_from_checkpoint_path(checkpoint_path, input_width=input_width, input_height=input_height)
-    print('Model input shape', model.input_shape)
-
-    _, input_width, input_height, _ = model.input_shape
 
     h_new, w_new = h, w
     if resize_ratio != 1.0:
@@ -133,56 +134,37 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
 
     return x, image
 
-# def plot_prediction(model, input_images=None, input_annotations=None):
-#
-# #     model = model_from_checkpoint_path('logs\\unet_mini_2021-09-27_231224.688994\\checkpoints\\unet_mini', 72)
-# fig, axs = plt.subplots(len(images), 5, figsize=(25, 5 * len(images)))
-#
-#   for ax, image, label, prediction in zip(axs, images, labels, predictions):
-#
-#     ax[0].matshow(image, cmap='Greys')
-#     ax[0].set_title('Input image')
-#
-#     ax[1].matshow(label, vmin=0,  vmax=2)
-#     ax[1].set_title('Target')
-#
-#     ax[2].matshow(prediction[0].argmax(axis=-1))
-#     ax[2].set_title('UNet prediction')
-#
-#     ax[3].matshow(prediction[0, :, :, 1], vmin=0.1, vmax=1.0, cmap='Reds')
-#     ax[3].set_title('Cone prediction')
-#
-#     ax[4].matshow(prediction[0, :, :, 2], vmin=0.1, vmax=1.0, cmap='Reds')
-#     ax[4].set_title('Crater prediction')
-#
-#
-#
-#     pr = predict.predict(model=model,
-#                     inp=input_image[0],
-#                     out_fname=None,
-#                     read_image_type=0,
-#                     # class_names = [ "background",    "cone", "crater" ],
-#                     # overlay_img=True, show_legends=True
-#                     )
-#
-#     import cv2
-#
-#     inp = cv2.imread(input_image[0], 0)
-#     ann = cv2.imread(input_image[1], 1)
-#
-#     fig, ax = plt.subplots(1, 3, figsize=(20,7))
-#     ax[0].imshow(inp, cmap='gray')
-#     ax[0].set_title('Input image')
-#     ax[1].matshow(ann[:,:,0], vmin=0)
-#     ax[1].set_title('Target')
-#     ax[2].matshow(pr, vmin=0)
-#     ax[2].set_title('Predicted')
-#     plt.show()
-#
-#     for i in (0, 1, 2):
-#         npx = np.sum(pr == i)
-#         apx = np.sum(ann[:,:,0] == i)
-#         print('Output %2d: %8d %8.3f%%, annotations %8d %8.3f%%' % (i, npx, 100* npx / pr.size, apx, 100 * apx / ann[:,:,0].size  ))
+import matplotlib.pyplot as plt
+
+def plot_predictions(images, targets, predictions):
+
+    if isinstance(images, np.ndarray) and images.ndim == 2:
+        # single grayscale image
+        images, targets, predictions = [images], [targets], [predictions]
+
+    fig, axs = plt.subplots(len(images), 5, figsize=(25, 5 * len(images)))
+
+    if len(images) == 1:
+        axs = [ axs ]
+
+    for ax, image, label, prediction in zip(axs, images, targets, predictions):
+
+        ax[0].matshow(image, cmap='Greys')
+        ax[0].set_title('Input image')
+
+        ax[1].matshow(label, vmin=0,  vmax=2)
+        ax[1].set_title('Target')
+
+        ax[2].matshow(prediction.argmax(axis=-1))
+        ax[2].set_title('Segmentation')
+
+        ax[3].matshow(prediction[:, :, 1], vmin=0.01, vmax=1.0, cmap='Reds')
+        ax[3].set_title('Cone prediction')
+
+        ax[4].matshow(prediction[:, :, 2], vmin=0.01, vmax=1.0, cmap='Reds')
+        ax[4].set_title('Crater prediction')
+
+    return fig
 
 
 if __name__ == '__main__':
