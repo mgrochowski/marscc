@@ -154,8 +154,11 @@ def print_detections(detected):
     if isinstance(detected, dict):
         table = detections_to_datatable(detected, sort_by='area')
 
-    text = table.groupby('label').agg({'area' : ['count', 'mean', 'std', 'min', 'max']}).to_string()
-    text += '\n\n' + table.to_string()
+    if not table.empty:
+        text = table.groupby('label').agg({'area' : ['count', 'mean', 'std', 'min', 'max']}).to_string()
+        text += '\n\n' + table.to_string()
+    else:
+        text = 'No objects detected'
 
     # text = ''
     # # print (sorted by perimeter)

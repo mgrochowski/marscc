@@ -10,7 +10,7 @@ import numpy as np
 
 from detect import detect_cones_and_craters, print_detections, draw_regions2
 from keras_segmentation.data_utils.data_loader import class_colors, get_image_array
-from keras_segmentation.predict import predict_multiple, model_from_checkpoint_path
+from keras_segmentation.predict import predict_multiple, model_from_checkpoint_path, predict
 from utils.image import labelmap_to_image, split_image
 from utils.download import download_model
 from keras_segmentation.models.config import IMAGE_ORDERING
@@ -23,12 +23,13 @@ from keras_segmentation.models.config import IMAGE_ORDERING
 @click.option('--resize_ratio', default=1.0, help='Scaling ratio')
 @click.option('--checkpoint_path', default=None, help='Path to model checkpoint')
 @click.option('--output_dir', default='detection_output', help='Output directory')
+@click.option('--norm', default='sub_and_divide', help='Imega normalization: sub_and_divide [-1, 1], sub_mean  [103.939, 116.779, 123.68], divide  [0,1]]')
 def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
-        output_dir='detection_output', checkpoint_path=None):
+        output_dir='detection_output', checkpoint_path=None, norm='sub_and_divide'):
 
     heatmap, image = predict_large_image(input_file=input_file, input_width=input_width, input_height=input_height,
                                        overlap=overlap, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
-                                              output_type='heatmap')
+                                              output_type='heatmap', imgNorm=norm)
 
     output_image = np.argmax(heatmap, axis=2)
 
@@ -59,7 +60,7 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
 
 
 def predict_large_image(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
-                        checkpoint_path=None, output_type='labels'):
+                        checkpoint_path=None, output_type='labels', imgNorm="sub_and_divide"):
     # output_type: 'labels' - return segmentation as labels, shape [width, height]
     #              'heatmap' - return segmentation as heatmap, shape [width, heaight, n_classes]
 
@@ -97,7 +98,7 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
         input_images.append(patch_x)
 
     # normalize data
-    input_images = np.array([ get_image_array(inp, input_width, input_height, ordering=IMAGE_ORDERING) for inp in input_images])
+    input_images = np.array([ get_image_array(inp, input_width, input_height, ordering=IMAGE_ORDERING, imgNorm=imgNorm) for inp in input_images])
 
     # segmentation
     net_predictions = model.predict(input_images)
@@ -132,6 +133,56 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
 
     return x, image
 
+# def plot_prediction(model, input_images=None, input_annotations=None):
+#
+# #     model = model_from_checkpoint_path('logs\\unet_mini_2021-09-27_231224.688994\\checkpoints\\unet_mini', 72)
+# fig, axs = plt.subplots(len(images), 5, figsize=(25, 5 * len(images)))
+#
+#   for ax, image, label, prediction in zip(axs, images, labels, predictions):
+#
+#     ax[0].matshow(image, cmap='Greys')
+#     ax[0].set_title('Input image')
+#
+#     ax[1].matshow(label, vmin=0,  vmax=2)
+#     ax[1].set_title('Target')
+#
+#     ax[2].matshow(prediction[0].argmax(axis=-1))
+#     ax[2].set_title('UNet prediction')
+#
+#     ax[3].matshow(prediction[0, :, :, 1], vmin=0.1, vmax=1.0, cmap='Reds')
+#     ax[3].set_title('Cone prediction')
+#
+#     ax[4].matshow(prediction[0, :, :, 2], vmin=0.1, vmax=1.0, cmap='Reds')
+#     ax[4].set_title('Crater prediction')
+#
+#
+#
+#     pr = predict.predict(model=model,
+#                     inp=input_image[0],
+#                     out_fname=None,
+#                     read_image_type=0,
+#                     # class_names = [ "background",    "cone", "crater" ],
+#                     # overlay_img=True, show_legends=True
+#                     )
+#
+#     import cv2
+#
+#     inp = cv2.imread(input_image[0], 0)
+#     ann = cv2.imread(input_image[1], 1)
+#
+#     fig, ax = plt.subplots(1, 3, figsize=(20,7))
+#     ax[0].imshow(inp, cmap='gray')
+#     ax[0].set_title('Input image')
+#     ax[1].matshow(ann[:,:,0], vmin=0)
+#     ax[1].set_title('Target')
+#     ax[2].matshow(pr, vmin=0)
+#     ax[2].set_title('Predicted')
+#     plt.show()
+#
+#     for i in (0, 1, 2):
+#         npx = np.sum(pr == i)
+#         apx = np.sum(ann[:,:,0] == i)
+#         print('Output %2d: %8d %8.3f%%, annotations %8d %8.3f%%' % (i, npx, 100* npx / pr.size, apx, 100 * apx / ann[:,:,0].size  ))
 
 
 if __name__ == '__main__':
