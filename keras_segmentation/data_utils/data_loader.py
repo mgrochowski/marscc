@@ -249,7 +249,8 @@ def image_segmentation_generator(images_path, segs_path, batch_size,
                                  augmentation_name="aug_all",
                                  custom_augmentation=None,
                                  other_inputs_paths=None, preprocessing=None,
-                                 read_image_type=cv2.IMREAD_COLOR , ignore_segs=False ):
+                                 read_image_type=cv2.IMREAD_COLOR , ignore_segs=False,
+                                 imgNorm="sub_mean"):
     
 
     if not ignore_segs:
@@ -292,8 +293,7 @@ def image_segmentation_generator(images_path, segs_path, batch_size,
                 if preprocessing is not None:
                     im = preprocessing(im)
 
-                X.append(get_image_array(im, input_width,
-                                         input_height, ordering=IMAGE_ORDERING))
+                X.append(get_image_array(im, input_width, input_height, imgNorm=imgNorm, ordering=IMAGE_ORDERING))
             else:
 
                 assert ignore_segs == False , "Not supported yet"

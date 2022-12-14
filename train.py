@@ -83,5 +83,8 @@ model.train(
     callbacks=callbacks,
     read_image_type=0,
     do_augment=True,
-    ignore_zero_class=False
+    ignore_zero_class=False,
+    imgNorm = "sub_and_divide",    # x -> [-1, +1]
+    gen_use_multiprocessing=False,
+    verify_dataset=True,
 )
