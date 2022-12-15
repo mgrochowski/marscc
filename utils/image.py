@@ -147,3 +147,7 @@ def split_image(input_image, output_width=450, output_height=450, overlap=100, p
 
     return patches
 
+
+def grayscale_to_rgb(im):
+
+    return np.concatenate([im[..., np.newaxis]]*3, axis=2)
