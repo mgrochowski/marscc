@@ -321,7 +321,7 @@ def image_segmentation_generator(images_path, segs_path, batch_size,
                 oth = []
                 for i, image in enumerate(ims):
                     oth_im = get_image_array(image, input_width,
-                                             input_height, ordering=IMAGE_ORDERING)
+                                             input_height, ordering=IMAGE_ORDERING, imgNorm="sub_mean")
 
                     if preprocessing is not None:
                         if isinstance(preprocessing, Sequence):

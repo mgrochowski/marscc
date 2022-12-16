@@ -80,7 +80,7 @@ def generate(input_file, mask_file, output_width=450, output_height=450, overlap
 
         assert patch_info == patch_info_ann
 
-        file_name = '%s_patch_%03d_%05d_%05d_r%0.2f%s' % (img_name, i, patch_info[0], patch_info[1],
+        file_name = '%s_patch_%03d_%05d_%05d_r%0.4f%s' % (img_name, i, patch_info[0], patch_info[1],
                                                           resize_ratio, img_ext)
         cv2.imwrite(str(output_images / file_name), patch_x)
         cv2.imwrite(str(output_annotations / file_name), patch_y)

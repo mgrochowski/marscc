@@ -9,6 +9,7 @@ from pathlib import Path
 import tensorflow as tf
 
 from keras.optimizers import Adam
+from utils.image import grayscale_to_rgb
 
 from utils.download import download_training_data
 download_training_data()
@@ -18,8 +19,8 @@ print(physical_devices)
 #
 
 # model = unet.unet_mini(n_classes=3, input_height=480, input_width=480, channels=1 )
-model = unet.unet(n_classes=3, input_height=480, input_width=480, channels=1 )
-# model = unet.vgg_unet(n_classes=3, input_height=480, input_width=480, channels=1 )
+# model = unet.unet(n_classes=3, input_height=480, input_width=480, channels=1 )
+model = unet.vgg_unet(n_classes=3, input_height=480, input_width=480, channels=3 )
 # model = unet.resnet50_unet(n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = unet.mobilenet_unet(n_classes=3, input_height=480, input_width=480, channels=1 )
 
@@ -63,6 +64,10 @@ callbacks = [
 optimizer_name = 'adam'
 # optimizer_name = Adam(learning_rate=0.01)
 
+preprocessing = None
+if model.channels == 3:
+    preprocessing = grayscale_to_rgb
+
 model.train(
     # train_images =  "data/mars_data_20210923/train/images/",
     # train_annotations = "data/mars_data_20210923/train/annotations/",
@@ -70,24 +75,26 @@ model.train(
     # train_annotations = "data/mars_data_20220115/train/annotations/",
     # train_images =  "data/mars_data_20221207/train/images/",
     # train_annotations = "data/mars_data_20221207/train/annotations/",
-    train_images="data/mars_data_20221207_no_one/train/images/",
-    train_annotations="data/mars_data_20221207_no_one/train/annotations/",
-
+    train_images="data/mars_data_20221207_x4_x8_x16/train/images/",                 # 7200 instances
+    train_annotations="data/mars_data_20221207_x4_x8_x16/train/annotations/",
     optimizer_name=optimizer_name,
     batch_size = 20,
     steps_per_epoch = 1024,
+    # steps_per_epoch = 2048,
     checkpoints_path =str(Path(checkpoint_path)),
     epochs=50,  # real epochs = epochs * (batch * steps) / instances = 50 * (20 * 1024) / 66984 = 15.3
-    # np_one: real_epochs = 63
+                                               # np_one: real_epochs = 63,
+                                               # x4_x8_x16 + mosaic = 140 epoch
     # val_images = "data/mars_data_20210923/val/images/",
     # val_annotations = "data/mars_data_20210923/val/annotations",
     # val_images = "data/mars_data_20221207/val/images/",
     # val_annotations = "data/mars_data_20221207/val/annotations",
-    val_images="data/mars_data_20221207_no_one/val/images/",
-    val_annotations="data/mars_data_20221207_no_one/val/annotations",
+    val_images="data/mars_data_20221207_x4_x8_x16/val/images/",         # 600 instances
+    val_annotations="data/mars_data_20221207_x4_x8_x16/val/annotations",
     validate=True,
     # val_steps_per_epoch = 280,  # 5582 (instances) / 20 (batch_size)
-    val_steps_per_epoch=68,  # 1350 (instances) / 20 (batch_size) no_one
+    # val_steps_per_epoch=68,  # 1350 (instances) / 20 (batch_size) no_one
+    val_steps_per_epoch=30,  # 600 (instances) / 20 (batch_size) no_one
     val_batch_size = 20,
     callbacks=callbacks,
     read_image_type=0,
@@ -96,4 +103,5 @@ model.train(
     imgNorm = "sub_and_divide",    # x -> [-1, +1]
     # gen_use_multiprocessing=True,  # error on Windows
     verify_dataset=False,
+    preprocessing=preprocessing
 )
