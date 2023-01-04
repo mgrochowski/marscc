@@ -11,7 +11,7 @@ import numpy as np
 from detect import detect_cones_and_craters, print_detections, draw_regions2
 from keras_segmentation.data_utils.data_loader import class_colors, get_image_array
 from keras_segmentation.predict import predict_multiple, model_from_checkpoint_path, predict
-from utils.image import labelmap_to_image, split_image
+from utils.image import labelmap_to_image, split_image, grayscale_to_rgb
 from utils.download import download_model
 from keras_segmentation.models.config import IMAGE_ORDERING
 
@@ -73,7 +73,7 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
         model = model_from_checkpoint_path(checkpoint_path, input_width=input_width, input_height=input_height)
 
     print('Model input shape', model.input_shape)
-    _, input_width, input_height, _ = model.input_shape
+    _, input_width, input_height, channels = model.input_shape
 
     image = cv2.imread(input_file, cv2.IMREAD_GRAYSCALE)
     if image is None:
@@ -89,8 +89,13 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
 
         image = cv2.resize(image, (h_new, w_new), interpolation=cv2.INTER_AREA)
 
+    if len(image.shape) == 2 and channels == 3:
+        image_to_split = grayscale_to_rgb(image)
+    else:
+        image_to_split = image
+
     padding = max(input_height, input_width) - overlap
-    patches = split_image(image, output_width=input_width, output_height=input_height, overlap=overlap,
+    patches = split_image(image_to_split, output_width=input_width, output_height=input_height, overlap=overlap,
                           padding=padding)
 
     input_images = []
@@ -171,7 +176,7 @@ def predict_and_plot(input_file, target_file, resize_ratio=1.0, checkpoint_path=
     heatmap, image = predict_large_image(input_file, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
                                          model=model, output_type='heatmap', imgNorm=imgNorm)
     target_img = cv2.imread(target_file, 1)
-    target_img = cv2.resize(target_img, (image.shape), interpolation=cv2.INTER_NEAREST)
+    target_img = cv2.resize(target_img, (image.shape[0], image.shape[1]), interpolation=cv2.INTER_NEAREST)
     fig = plot_predictions(image, target_img, heatmap)
     return fig
 

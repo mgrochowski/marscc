@@ -161,6 +161,12 @@ def predict(model=None, inp=None, out_fname=None,
 
     # assert (len(inp.shape) == 3 or len(inp.shape) == 1 or len(inp.shape) == 4), "Image should be h,w,3 "
 
+    channels = model.input_shape[1]
+    if IMAGE_ORDERING == 'channels_last':
+        channels = model.input_shape[3]
+    if len(inp.shape) == 2 and channels == 3:
+        inp = np.concatenate([inp[..., np.newaxis]] * 3, axis=2)
+
     output_width = model.output_width
     output_height = model.output_height
     input_width = model.input_width
@@ -169,6 +175,7 @@ def predict(model=None, inp=None, out_fname=None,
 
     x = get_image_array(inp, input_width, input_height,
                         ordering=IMAGE_ORDERING, imgNorm=imgNorm)
+
     pr = model.predict(np.array([x]))[0]
     pr = pr.reshape((output_height,  output_width, n_classes)).argmax(axis=2)
 
