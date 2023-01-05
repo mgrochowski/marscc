@@ -8,7 +8,6 @@ import click
 import cv2
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
 from skimage.color import gray2rgb
@@ -17,7 +16,7 @@ from skimage.morphology import closing, square
 from skimage.segmentation import clear_border
 from skimage.measure import label as label_region
 
-from utils.image import image_to_labelmap, label_map
+from utils.image import image_to_labelmap, label_map, recognize_rgb_map
 
 
 @click.command()
@@ -37,7 +36,8 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
     # plt.imshow(image)
     # plt.show()
 
-    labels = image_to_labelmap(image)
+    rgb_map = recognize_rgb_map(image)
+    labels = image_to_labelmap(image, rgb_map=rgb_map)
     # plt.imshow(label)
 
     detections = detect_cones_and_craters(labels, min_area=min_area, min_perimeter=min_perimeter, min_solidity=min_solidity)

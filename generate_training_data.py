@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 from skimage.color import label2rgb
 
-from utils.image import image_to_labelmap, split_image
+from utils.image import image_to_labelmap, split_image, recognize_rgb_map
 
 @click.command()
 @click.option('--input_file', default=None, help='Input file')
@@ -47,7 +47,8 @@ def generate(input_file, mask_file, output_width=450, output_height=450, overlap
         mask_img = cv2.resize(mask_img, (h_new, w_new), interpolation=cv2.INTER_NEAREST_EXACT)
         print('New size: %dx%d' % (h_new, w_new))
 
-    labels = image_to_labelmap(mask_img)
+    rgb_map = recognize_rgb_map(mask_img)
+    labels = image_to_labelmap(mask_img, rgb_map=rgb_map)
 
     # code labels as blue channel in RGB image
     pad_zeros = np.zeros((labels.shape[0], labels.shape[1], 2)).astype('uint8')
