@@ -6,11 +6,21 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-rgb_map = {
+# change: before 221122
+rgb_map_v1 = {
        'background': [255, 255, 255],
        'cone':  [190, 190, 255],
        'crater':  [115, 178, 115]
    }
+
+# change: after 221122
+rgb_map_v2 = {
+       'background': [255, 255, 255],
+       'cone':  [137, 133, 214],
+       'crater':  [115, 178, 115]
+   }
+
+rgb_map = rgb_map_v2
 
 label_map = {
       'background': 0,
@@ -23,6 +33,13 @@ label_list = [
     'cone',
     'crater'
     ]
+
+def recognize_rgb_map(x):
+
+    if np.any(np.alltrue(x == rgb_map_v1['cone'], axis=2)):
+        return rgb_map_v1
+    else:
+        return rgb_map_v2
 
 def image_to_labelmap(x, rgb_map=rgb_map, label_map=label_map):
     
@@ -139,3 +156,7 @@ def split_image(input_image, output_width=450, output_height=450, overlap=100, p
 
     return patches
 
+
+def grayscale_to_rgb(im):
+
+    return np.concatenate([im[..., np.newaxis]]*3, axis=2)

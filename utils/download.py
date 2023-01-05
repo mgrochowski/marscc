@@ -27,6 +27,11 @@ MODELS = {
             'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/unet_2022-02-17_094711.923161.zip',
             'tag':  'unet_2022-02-17_094711.923161',
             'name': 'unet'
+     },
+    'pspnet_50': {
+            'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/pspnet_50_2022-12-30_205118.894456.zip',
+            'tag' : 'pspnet_50_2022-12-30_205118.894456',
+            'name': 'pspnet_50'
      }
 }
 
@@ -104,5 +109,6 @@ if __name__ == '__main__':
 
     # download_original_images()
     download_training_data()
-    download_model(target_dir='model_tmp', name='vgg_unet2')
+    # download_model(target_dir='model_tmp', name='vgg_unet2')
+    download_model(target_dir='model_tmp', name='pspnet_50')
 
