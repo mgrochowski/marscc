@@ -60,7 +60,8 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
 
 
 def predict_large_image(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
-                        checkpoint_path=None, model=None, output_type='labels', imgNorm="sub_and_divide"):
+                        checkpoint_path=None, model=None, output_type='labels', imgNorm="sub_and_divide",
+                        batch_size=32):
     # output_type: 'labels' - return segmentation as labels, shape [width, height]
     #              'heatmap' - return segmentation as heatmap, shape [width, heaight, n_classes]
 
@@ -106,15 +107,26 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
     # normalize data
     input_images = np.array([ get_image_array(inp, input_width, input_height, ordering=IMAGE_ORDERING, imgNorm=imgNorm) for inp in input_images])
 
+    n_images = input_images.shape[0]
+    n_steps = n_images // batch_size
+    if n_images % batch_size != 0:
+        n_steps = n_images // batch_size + 1
+
     # segmentation
-    net_predictions = model.predict(input_images)
+    predictions = []
+    start_ind = 0
+    for i in range(n_steps):
+        p = model.predict(input_images[start_ind:start_ind+batch_size])
+        predictions.append(p)
+        start_ind = start_ind + batch_size
+
+    net_predictions = np.concatenate(predictions, axis=0)
 
     output_height = model.output_height
     output_width = model.output_width
-    n_img = input_images.shape[0]
     n_classes = net_predictions.shape[2]
     # predictions = np.argmax(net_predictions, axis=2).reshape((n_img, output_height, output_width))
-    segmentation_heatmap = net_predictions.reshape((n_img, output_height, output_width, n_classes))
+    segmentation_heatmap = net_predictions.reshape((n_images, output_height, output_width, n_classes))
 
     # join
     # output_prediction = np.zeros((h_new + padding, w_new + padding))
