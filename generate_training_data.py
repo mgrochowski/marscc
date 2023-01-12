@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 from skimage.color import label2rgb
 
-from utils.image import image_to_labelmap, split_image
+from utils.image import image_to_labelmap, split_image, recognize_rgb_map
 
 @click.command()
 @click.option('--input_file', default=None, help='Input file')
@@ -19,6 +19,12 @@ from utils.image import image_to_labelmap, split_image
 @click.option('--resize_ratio', default=1.0, help='Scaling ratio')
 @click.option('--debug', default=False, is_flag=True, help='Create debug pictures')
 def run(input_file, mask_file, output_width=450, output_height=450, overlap=100, resize_ratio=0.1,
+        output_dir='output_dir', debug=False):
+
+    generate(input_file=input_file, mask_file=mask_file, output_width=output_width, output_height=output_height,
+             overlap=overlap, resize_ratio=resize_ratio, output_dir=output_dir, debug=debug)
+
+def generate(input_file, mask_file, output_width=450, output_height=450, overlap=100, resize_ratio=0.1,
         output_dir='output_dir', debug=False):
     image = cv2.imread(input_file, cv2.IMREAD_GRAYSCALE)
     if image is None:
@@ -41,7 +47,8 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
         mask_img = cv2.resize(mask_img, (h_new, w_new), interpolation=cv2.INTER_NEAREST_EXACT)
         print('New size: %dx%d' % (h_new, w_new))
 
-    labels = image_to_labelmap(mask_img)
+    rgb_map = recognize_rgb_map(mask_img)
+    labels = image_to_labelmap(mask_img, rgb_map=rgb_map)
 
     # code labels as blue channel in RGB image
     pad_zeros = np.zeros((labels.shape[0], labels.shape[1], 2)).astype('uint8')
@@ -74,7 +81,7 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
 
         assert patch_info == patch_info_ann
 
-        file_name = '%s_patch_%03d_%05d_%05d_r%0.2f%s' % (img_name, i, patch_info[0], patch_info[1],
+        file_name = '%s_patch_%03d_%05d_%05d_r%0.4f%s' % (img_name, i, patch_info[0], patch_info[1],
                                                           resize_ratio, img_ext)
         cv2.imwrite(str(output_images / file_name), patch_x)
         cv2.imwrite(str(output_annotations / file_name), patch_y)

@@ -85,9 +85,12 @@ def train(model,
           other_inputs_paths=None,
           preprocessing=None,
           channels = 3,
-          read_image_type=1  # cv2.IMREAD_COLOR = 1 (rgb),
+          read_image_type=1,  # cv2.IMREAD_COLOR = 1 (rgb),
                              # cv2.IMREAD_GRAYSCALE = 0,
                              # cv2.IMREAD_UNCHANGED = -1 (4 channels like RGBA)
+          imgNorm="sub_mean"   # "sub_mean"  x -> x - [103.939, 116.779, 123.68]
+                               # "divide"    x -> x / 255
+                               # "sub_and_divide" x -> x / 127.5 - 1
          ):
     from .models.all_models import model_from_name
     # check if user gives model name instead of the model object
@@ -172,14 +175,14 @@ def train(model,
         input_height, input_width, output_height, output_width,
         do_augment=do_augment, augmentation_name=augmentation_name,
         custom_augmentation=custom_augmentation, other_inputs_paths=other_inputs_paths,
-        preprocessing=preprocessing, read_image_type=read_image_type)
+        preprocessing=preprocessing, read_image_type=read_image_type, imgNorm=imgNorm)
 
     if validate:
         val_gen = image_segmentation_generator(
             val_images, val_annotations,  val_batch_size,
             n_classes, input_height, input_width, output_height, output_width,
             other_inputs_paths=other_inputs_paths,
-            preprocessing=preprocessing, read_image_type=read_image_type)
+            preprocessing=preprocessing, read_image_type=read_image_type, imgNorm=imgNorm)
 
     if callbacks is None and (not checkpoints_path is  None) :
         default_callback = ModelCheckpoint(

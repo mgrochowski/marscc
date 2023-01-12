@@ -8,7 +8,7 @@ import click
 import cv2
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import numpy as np
+import pandas as pd
 
 from skimage.color import gray2rgb
 from skimage.measure import regionprops
@@ -16,7 +16,7 @@ from skimage.morphology import closing, square
 from skimage.segmentation import clear_border
 from skimage.measure import label as label_region
 
-from utils.image import image_to_labelmap, label_map
+from utils.image import image_to_labelmap, label_map, recognize_rgb_map
 
 
 @click.command()
@@ -36,11 +36,13 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
     # plt.imshow(image)
     # plt.show()
 
-    labels = image_to_labelmap(image)
+    rgb_map = recognize_rgb_map(image)
+    labels = image_to_labelmap(image, rgb_map=rgb_map)
     # plt.imshow(label)
 
-    results = detect_cones_and_craters(labels, min_area=min_area, min_perimeter=min_perimeter, min_solidity=min_solidity)
-    log = print_detections(results)
+    detections = detect_cones_and_craters(labels, min_area=min_area, min_perimeter=min_perimeter, min_solidity=min_solidity)
+    table = detections_to_datatable(detections)
+    log = print_detections(table)
 
     o_dir = Path(output_dir)
     o_dir.mkdir(parents=True, exist_ok=True)
@@ -50,8 +52,10 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
     with open(file_path, 'w') as f:
         f.write(log)
 
+    table.to_csv(str(o_dir / i_name) + '_dt.csv', index=False)
+
     i_name = Path(input_file).stem
-    labels_reg = draw_regions2(image, results)
+    labels_reg = draw_regions2(image, detections)
     file_path = str(o_dir / i_name) + '_lab_regions.png'
     cv2.imwrite(file_path, labels_reg)
 
@@ -59,9 +63,9 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
         inp_img = cv2.imread(input_image)
 
         if inp_img is None:
-            print('Warrning: cant open file %s' % input_image)
+            print('Warning: cant open file %s' % input_image)
         else:
-            inp_img_reg = draw_regions2(inp_img, results)
+            inp_img_reg = draw_regions2(inp_img, detections)
             i_name = Path(input_image).stem
             file_path = str(o_dir / i_name) + '_img_regions.png'
             cv2.imwrite(file_path, inp_img_reg)
@@ -106,7 +110,6 @@ def draw_regions(image, detected, color=None):
     if color is None:
         color = ['red', 'green']
 
-    # # plot
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.imshow(image)
 
@@ -147,19 +150,43 @@ def draw_regions2(image, detected, color=None, thickness=3):
 
 def print_detections(detected):
 
-    text = ''
-    # print (sorted by perimeter)
-    for i, label in enumerate(['cone', 'crater']):
-        res = detected[label]
-        text += '\n%s N=%d\n\n' % (label, len(res))
-        text += 'Region      area                   bbox          centroid        perimeter  solidity\n'
+    table = detected
+    if isinstance(detected, dict):
+        table = detections_to_datatable(detected, sort_by='area')
 
-        for region in sorted(res, key=lambda x: getattr(x, 'perimeter')):
-            text += '%5d  %9d  %25s  %8.1f %8.1f  %8.1f  %5.3f\n' % (
-                region.label, region.area, str(region.bbox), region.centroid[0], region.centroid[1], region.perimeter,
-                region.solidity)
+    if not table.empty:
+        text = table.groupby('label').agg({'area' : ['count', 'mean', 'std', 'min', 'max']}).to_string()
+        text += '\n\n' + table.to_string()
+    else:
+        text = 'No objects detected'
+
+    # text = ''
+    # # print (sorted by perimeter)
+    # for i, label in enumerate(detected):
+    #     res = detected[label]
+    #     text += '\n%s N=%d\n\n' % (label, len(res))
+    #     text += 'Region      area                   bbox          centroid        perimeter  solidity\n'
+    #
+    #     for region in sorted(res, key=lambda x: getattr(x, 'perimeter')):
+    #         text += '%5d  %9d  %25s  %8.1f %8.1f  %8.1f  %5.3f\n' % (
+    #             region.label, region.area, str(region.bbox), region.centroid[0], region.centroid[1], region.perimeter,
+    #             region.solidity)
     print(text)
     return text
+
+
+def detections_to_datatable(detections, sort_by='area'):
+
+    tables = []
+    for label in detections:
+        dt = pd.DataFrame(columns=['label', 'id', 'area', 'bbox', 'centroid', 'perimeter', 'solidity'])
+        for i, region in enumerate(detections[label]):
+            dt.loc[i] = [label, int(region.label), float(region.area), str(region.bbox), str(region.centroid), float(region.perimeter),
+                float(region.solidity)]
+        tables.append(dt)
+
+    result = pd.concat(tables, axis=0)
+    return result.sort_values(by=[sort_by], ascending=False)
 
 
 def detectoin(x, label=1):
@@ -178,7 +205,7 @@ def detectoin(x, label=1):
 
 def class_report(cm, target_names=None):
 
-    print("Confussion matrix")
+    print("Confusion matrix")
     print("true \ predicted")
 
     print(*[ ("%10s  " % target_names[i]) + str(row)[1:-1] for i, row in enumerate(cm)], sep='\n')

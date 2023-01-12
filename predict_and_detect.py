@@ -10,8 +10,8 @@ import numpy as np
 
 from detect import detect_cones_and_craters, print_detections, draw_regions2
 from keras_segmentation.data_utils.data_loader import class_colors, get_image_array
-from keras_segmentation.predict import predict_multiple, model_from_checkpoint_path
-from utils.image import labelmap_to_image, split_image
+from keras_segmentation.predict import predict_multiple, model_from_checkpoint_path, predict
+from utils.image import labelmap_to_image, split_image, grayscale_to_rgb
 from utils.download import download_model
 from keras_segmentation.models.config import IMAGE_ORDERING
 
@@ -23,12 +23,13 @@ from keras_segmentation.models.config import IMAGE_ORDERING
 @click.option('--resize_ratio', default=1.0, help='Scaling ratio')
 @click.option('--checkpoint_path', default=None, help='Path to model checkpoint')
 @click.option('--output_dir', default='detection_output', help='Output directory')
+@click.option('--norm', default='sub_and_divide', help='Imega normalization: sub_and_divide [-1, 1], sub_mean  [103.939, 116.779, 123.68], divide  [0,1]]')
 def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
-        output_dir='detection_output', checkpoint_path=None):
+        output_dir='detection_output', checkpoint_path=None, norm='sub_and_divide'):
 
     heatmap, image = predict_large_image(input_file=input_file, input_width=input_width, input_height=input_height,
                                        overlap=overlap, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
-                                              output_type='heatmap')
+                                              output_type='heatmap', imgNorm=norm)
 
     output_image = np.argmax(heatmap, axis=2)
 
@@ -59,14 +60,20 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
 
 
 def predict_large_image(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
-                        checkpoint_path=None, output_type='labels'):
+                        checkpoint_path=None, model=None, output_type='labels', imgNorm="sub_and_divide"):
     # output_type: 'labels' - return segmentation as labels, shape [width, height]
     #              'heatmap' - return segmentation as heatmap, shape [width, heaight, n_classes]
 
-    if checkpoint_path is None:
-        checkpoint_path = download_model(target_dir='models')
-    else:
-        checkpoint_path = str(Path(checkpoint_path))
+    if model is None:
+        if checkpoint_path is None:
+            checkpoint_path = download_model(target_dir='models')
+        else:
+            checkpoint_path = str(Path(checkpoint_path))
+
+        model = model_from_checkpoint_path(checkpoint_path, input_width=input_width, input_height=input_height)
+
+    print('Model input shape', model.input_shape)
+    _, input_width, input_height, channels = model.input_shape
 
     image = cv2.imread(input_file, cv2.IMREAD_GRAYSCALE)
     if image is None:
@@ -75,11 +82,6 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
     h, w = image.shape[0], image.shape[1]
     print('Image original size: %dx%d' % (h, w))
 
-    model = model_from_checkpoint_path(checkpoint_path, input_width=input_width, input_height=input_height)
-    print('Model input shape', model.input_shape)
-
-    _, input_width, input_height, _ = model.input_shape
-
     h_new, w_new = h, w
     if resize_ratio != 1.0:
         h_new = int(h * resize_ratio)
@@ -87,8 +89,13 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
 
         image = cv2.resize(image, (h_new, w_new), interpolation=cv2.INTER_AREA)
 
+    if len(image.shape) == 2 and channels == 3:
+        image_to_split = grayscale_to_rgb(image)
+    else:
+        image_to_split = image
+
     padding = max(input_height, input_width) - overlap
-    patches = split_image(image, output_width=input_width, output_height=input_height, overlap=overlap,
+    patches = split_image(image_to_split, output_width=input_width, output_height=input_height, overlap=overlap,
                           padding=padding)
 
     input_images = []
@@ -97,7 +104,7 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
         input_images.append(patch_x)
 
     # normalize data
-    input_images = np.array([ get_image_array(inp, input_width, input_height, ordering=IMAGE_ORDERING) for inp in input_images])
+    input_images = np.array([ get_image_array(inp, input_width, input_height, ordering=IMAGE_ORDERING, imgNorm=imgNorm) for inp in input_images])
 
     # segmentation
     net_predictions = model.predict(input_images)
@@ -132,7 +139,46 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
 
     return x, image
 
+import matplotlib.pyplot as plt
 
+def plot_predictions(images, targets, predictions):
+
+    if isinstance(images, np.ndarray) and images.ndim == 2:
+        # single grayscale image
+        images, targets, predictions = [images], [targets], [predictions]
+
+    fig, axs = plt.subplots(len(images), 5, figsize=(25, 5 * len(images)))
+
+    if len(images) == 1:
+        axs = [ axs ]
+
+    for ax, image, label, prediction in zip(axs, images, targets, predictions):
+
+        ax[0].matshow(image, cmap='Greys')
+        ax[0].set_title('Input image')
+
+        ax[1].matshow(label, vmin=0,  vmax=2)
+        ax[1].set_title('Target')
+
+        ax[2].matshow(prediction.argmax(axis=-1))
+        ax[2].set_title('Segmentation')
+
+        ax[3].matshow(prediction[:, :, 1], vmin=0.01, vmax=1.0, cmap='Reds')
+        ax[3].set_title('Cone prediction')
+
+        ax[4].matshow(prediction[:, :, 2], vmin=0.01, vmax=1.0, cmap='Reds')
+        ax[4].set_title('Crater prediction')
+
+    return fig
+
+def predict_and_plot(input_file, target_file, resize_ratio=1.0, checkpoint_path=None, model=None, imgNorm="sub_and_divide"):
+
+    heatmap, image = predict_large_image(input_file, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
+                                         model=model, output_type='heatmap', imgNorm=imgNorm)
+    target_img = cv2.imread(target_file, 1)
+    target_img = cv2.resize(target_img, (image.shape[0], image.shape[1]), interpolation=cv2.INTER_NEAREST)
+    fig = plot_predictions(image, target_img, heatmap)
+    return fig
 
 if __name__ == '__main__':
 
