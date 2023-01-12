@@ -18,6 +18,7 @@ from skimage.measure import label as label_region
 
 from utils.image import image_to_labelmap, label_map, recognize_rgb_map
 
+label_names = ['cone', 'crater']
 
 @click.command()
 @click.option('--input_file', default=None, help='Input file with annotations (labels)')
@@ -73,9 +74,8 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
     print('Results saved in %s' % output_dir)
 
 
-def detect_cones_and_craters(labels, min_area=10, min_perimeter=5, min_solidity=0.5):
 
-    label_names = ['cone', 'crater']
+def detect_cones_and_craters(labels, min_area=10, min_perimeter=5, min_solidity=0.5, label_names=label_names):
     detected = {}
 
     # detect
@@ -97,7 +97,13 @@ def detect_cones_and_craters(labels, min_area=10, min_perimeter=5, min_solidity=
             if region.area >= min_area and region.perimeter >= min_perimeter and region.solidity >= min_solidity:
                 res_filtered.append(region)
             else:
-                print('Removing region, area %d, perimeter %f, solidity %f' % (region.area, region.perimeter, region.solidity))
+                reasons = []
+                if region.area < min_area: reasons.append('area %.1f < %.1f' % (region.area, min_area))
+                if region.perimeter < min_perimeter: reasons.append('perimeter %.1f < %.1f' % (region.perimeter, min_perimeter))
+                if region.solidity < min_solidity: reasons.append('solidity %.1f < %.1f' % (region.solidity, min_solidity))
+
+                print('Ignoring region %d [%s] at %.0f,%.0f, approx. diameter %.1f, %s ' %
+                      (region.label, label, region.centroid[0], region.centroid[1], 2.0 * np.sqrt(region.area / np.pi), ", ".join(reasons)))
 
         detected[label] = res_filtered
 
