@@ -24,10 +24,9 @@ label_names = ['cone', 'crater']
 @click.option('--input_file', default=None, help='Input file with annotations (labels)')
 @click.option('--input_image', default=None, help='Input image with Mars surface')
 @click.option('--min_area', default=10, help='Minimum object area [in ptx]')
-@click.option('--min_perimeter', default=5, help='Minimum object perimeter [in ptx]')
 @click.option('--min_solidity', default=0.5, help='Minimum object solidity')
 @click.option('--output_dir', default='detect_cones_output', help='Output directory')
-def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity=0.5, output_dir='detect_cones_output'):
+def run(input_file, input_image=None, min_area=10, min_solidity=0.5, output_dir='detect_cones_output'):
 
     image = cv2.imread(input_file)
     if image is None:
@@ -41,7 +40,7 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
     labels = image_to_labelmap(image, rgb_map=rgb_map)
     # plt.imshow(label)
 
-    detections = detect_cones_and_craters(labels, min_area=min_area, min_perimeter=min_perimeter, min_solidity=min_solidity)
+    detections = detect_cones_and_craters(labels, min_area=min_area, min_solidity=min_solidity)
     table = detections_to_datatable(detections)
     log = print_detections(table)
 
@@ -75,7 +74,7 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
 
 
 
-def detect_cones_and_craters(labels, min_area=10, min_perimeter=5, min_solidity=0.5, label_names=label_names):
+def detect_cones_and_craters(labels, min_area=10, min_solidity=0.5, label_names=label_names):
     detected = {}
 
     # detect
@@ -94,12 +93,11 @@ def detect_cones_and_craters(labels, min_area=10, min_perimeter=5, min_solidity=
         for region in res:
 
             # take regions with large enough areas
-            if region.area >= min_area and region.perimeter >= min_perimeter and region.solidity >= min_solidity:
+            if region.area >= min_area and region.solidity >= min_solidity:
                 res_filtered.append(region)
             else:
                 reasons = []
                 if region.area < min_area: reasons.append('area %.1f < %.1f' % (region.area, min_area))
-                if region.perimeter < min_perimeter: reasons.append('perimeter %.1f < %.1f' % (region.perimeter, min_perimeter))
                 if region.solidity < min_solidity: reasons.append('solidity %.1f < %.1f' % (region.solidity, min_solidity))
 
                 print('Ignoring region %d [%s] at %.0f,%.0f, approx. diameter %.1f, %s ' %
@@ -166,17 +164,6 @@ def print_detections(detected):
     else:
         text = 'No objects detected'
 
-    # text = ''
-    # # print (sorted by perimeter)
-    # for i, label in enumerate(detected):
-    #     res = detected[label]
-    #     text += '\n%s N=%d\n\n' % (label, len(res))
-    #     text += 'Region      area                   bbox          centroid        perimeter  solidity\n'
-    #
-    #     for region in sorted(res, key=lambda x: getattr(x, 'perimeter')):
-    #         text += '%5d  %9d  %25s  %8.1f %8.1f  %8.1f  %5.3f\n' % (
-    #             region.label, region.area, str(region.bbox), region.centroid[0], region.centroid[1], region.perimeter,
-    #             region.solidity)
     print(text)
     return text
 
@@ -185,13 +172,14 @@ def detections_to_datatable(detections, sort_by='area'):
 
     tables = []
     for label in detections:
-        dt = pd.DataFrame(columns=['label', 'id', 'area', 'bbox', 'centroid', 'perimeter', 'solidity'])
+        dt = pd.DataFrame(columns=['label', 'id', 'area', 'bbox', 'c_x', 'c_y', 'solidity'])
         for i, region in enumerate(detections[label]):
-            dt.loc[i] = [label, int(region.label), float(region.area), str(region.bbox), str(region.centroid), float(region.perimeter),
-                float(region.solidity)]
+            dt.loc[i] = [label, int(region.label), float(region.area), str(region.bbox), float(region.centroid[0]),
+                         float(region.centroid[1]), float(region.solidity)]
         tables.append(dt)
 
     result = pd.concat(tables, axis=0)
+    result['diameter'] = 2.0 * np.sqrt(result['area'] / np.pi)
     return result.sort_values(by=[sort_by], ascending=False)
 
 

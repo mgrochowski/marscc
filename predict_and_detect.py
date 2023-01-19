@@ -42,7 +42,7 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
     file_path = str(o_dir / i_name) + '_segmentation.png'
     cv2.imwrite(file_path, output_image_rgb)
 
-    results = detect_cones_and_craters(labels=output_image, min_area=10, min_perimeter=5,
+    results = detect_cones_and_craters(labels=output_image, min_area=10,
                                        min_solidity=0.5)
 
     log = print_detections(results)
