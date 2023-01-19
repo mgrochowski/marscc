@@ -79,7 +79,7 @@ def detect_cones_and_craters(labels, min_area=10, min_solidity=0.5, label_names=
 
     # detect
     for label in label_names:
-        label_image = detectoin(labels, label=label_map[label])
+        label_image = detection(labels, label=label_map[label])
         res = regionprops(label_image)
 
         detected[label] = res
@@ -183,7 +183,7 @@ def detections_to_datatable(detections, sort_by='area'):
     return result.sort_values(by=[sort_by], ascending=False)
 
 
-def detectoin(x, label=1):
+def detection(x, label=1):
     label_img = (x == label).astype(np.int32)
 
     # apply threshold
@@ -258,7 +258,7 @@ def iou_bbox(bb1, bb2):
     return iou
 
 
-def detection_report(true_regions, predicted_regions, iou_treshold=0.5):
+def detection_report(true_regions, predicted_regions, iou_threshold=0.5):
 
     label_names = []
     label_idx = { }
@@ -279,11 +279,11 @@ def detection_report(true_regions, predicted_regions, iou_treshold=0.5):
             target_reg_list.append((r, label))
 
     bcg_idx = len(label_names)   # background index
-    label_names.append('backgroubd')
+    label_names.append('background')
 
     # count mached and conf-mat
-    mached_target = np.zeros((len(target_reg_list, )))
-    mached_pred = np.zeros((len(predicted_reg_list, )))
+    matched_target = np.zeros((len(target_reg_list, )))
+    matched_pred = np.zeros((len(predicted_reg_list, )))
 
     conff = np.zeros((len(label_names), len(label_names)), dtype=np.int)
 
@@ -291,27 +291,27 @@ def detection_report(true_regions, predicted_regions, iou_treshold=0.5):
     # y_true, y_pred  = [], []
     for i, tr in enumerate(target_reg_list):
         for j, sr in enumerate(predicted_reg_list):
-            # in_ptx = interesction_points(tr[0].coords, sr[0].coords, treshold=len(tr[0].coords))
+            # in_ptx = intersection_points(tr[0].coords, sr[0].coords, treshold=len(tr[0].coords))
             # ptx_iou = float(len(in_ptx)) / (len(tr[0].coords) + len(sr[0].coords) - len(in_ptx))
             iou = iou_bbox(tr[0].bbox, sr[0].bbox)
-            if iou > iou_treshold:
-                mached_target[i] = mached_target[i] + 1
-                mached_pred[j] = mached_pred[j] + 1
+            if iou > iou_threshold:
+                matched_target[i] = matched_target[i] + 1
+                matched_pred[j] = matched_pred[j] + 1
                 # print(i, j, len(in_ptx), tr[1], sr[1])
                 conff[label_idx[tr[1]], label_idx[sr[1]]] = conff[label_idx[tr[1]], label_idx[sr[1]]] + 1
                 if tr[1] != sr[1]:
                     summary['errors'].append((tr, sr))
-            if iou > 0 and iou <= iou_treshold:
+            if iou > 0 and iou <= iou_threshold:
                 summary['miss_iou'].append((tr, sr, iou))
 
     # not detected target ROIs, mark as background predictions
-    for tr, mt in zip(target_reg_list, mached_target):
+    for tr, mt in zip(target_reg_list, matched_target):
         if mt == 0:
             conff[label_idx[tr[1]], bcg_idx] = conff[label_idx[tr[1]], bcg_idx] + 1
             summary['missing'].append(tr)
 
     # prediction of regions not matched to target ROIs
-    for pr, mp in zip(predicted_reg_list, mached_pred):
+    for pr, mp in zip(predicted_reg_list, matched_pred):
         if mp == 0:
             conff[bcg_idx, label_idx[pr[1]]] = conff[bcg_idx, label_idx[pr[1]]] + 1
             summary['added'].append(pr)
@@ -322,14 +322,14 @@ def detection_report(true_regions, predicted_regions, iou_treshold=0.5):
     return summary
 
 
-def interesction_points(x, y, treshold=1):
+def intersection_points(x, y, threshold=1):
 
     points = []
 
     for ex in x:
         if np.any(np.all(ex == y, axis=1)):
             points.append(ex)
-        if len(points) >= treshold: break
+        if len(points) >= threshold: break
 
     return points
 

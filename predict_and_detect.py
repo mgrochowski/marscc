@@ -153,35 +153,71 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
 
 import matplotlib.pyplot as plt
 
-def plot_predictions(images, targets, predictions):
+def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox=None, texts=None, offset=20):
 
     if isinstance(images, np.ndarray) and images.ndim == 2:
         # single grayscale image
-        images, targets, predictions = [images], [targets], [predictions]
+        images, targets, predictions, heatmaps, bbox, texts = [images], [targets], [predictions], [heatmaps], [bbox], [texts]
 
-    fig, axs = plt.subplots(len(images), 5, figsize=(25, 5 * len(images)))
+    n_rows = len(images)
 
-    if len(images) == 1:
+    n_cols = 5
+    if targets is None or targets[0] is None:
+        n_cols = n_cols -1
+        targets = [None] * n_rows
+    if heatmaps is None or heatmaps[0] is None:
+        n_cols = n_cols - 2
+        heatmaps = [None] * n_rows
+    if bbox is None or bbox[0] is None:
+        bbox = [None]  * n_rows
+    if predictions is None or predictions[0] is None:
+        predictions = [None]  * n_rows
+    if texts is None or texts[0] is None:
+        texts = [None] * n_rows
+
+    fig, axs = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 5 * n_rows))
+    if n_rows == 1:
         axs = [ axs ]
 
-    for ax, image, label, prediction in zip(axs, images, targets, predictions):
+    for ax, image, target, prediction, heatmap, bb, text in zip(axs, images, targets, predictions, heatmaps, bbox, texts):
 
-        ax[0].matshow(image, cmap='Greys')
-        ax[0].set_title('Input image')
+        k = 0
+        ax[k].imshow(image, cmap='Greys')
+        ax[k].set_title('Input image')
 
-        ax[1].matshow(label, vmin=0,  vmax=2)
-        ax[1].set_title('Target')
+        if target is not None:
+            k = k + 1
+            ax[k].imshow(target, vmin=0,  vmax=2)
+            ax[k].set_title('Target')
 
-        ax[2].matshow(prediction.argmax(axis=-1))
-        ax[2].set_title('Segmentation')
+        k = k + 1
+        if prediction is None:
+            ax[k].imshow(heatmap.argmax(axis=-1), vmin=0,  vmax=2)
+        else:
+            ax[k].imshow(prediction, vmin=0,  vmax=2)
+        ax[k].set_title('Segmentation')
 
-        ax[3].matshow(prediction[:, :, 1], vmin=0.01, vmax=1.0, cmap='Reds')
-        ax[3].set_title('Cone prediction')
+        if heatmap is not None:
+            k = k + 1
+            ax[k].imshow(heatmap[:, :, 1], vmin=0.0, vmax=1.0, cmap='Reds')
+            ax[k].set_title('Cone prediction')
 
-        ax[4].matshow(prediction[:, :, 2], vmin=0.01, vmax=1.0, cmap='Reds')
-        ax[4].set_title('Crater prediction')
+            k = k + 1
+            ax[k].imshow(heatmap[:, :, 2], vmin=0.0, vmax=1.0, cmap='Reds')
+            ax[k].set_title('Crater prediction')
 
+        if bb is not None:
+            y1, x1, y2, x2 = bb
+
+            for i in range(n_cols):
+              ax[i].set_xlim((x1-offset, x2+offset))
+              ax[i].set_ylim((y2+offset, y1-offset))
+        if text is not None:
+            yy1, yy2 = ax[0].get_ylim()
+            ax[0].text(0, (yy2-yy1) * 0.1, text, fontsize=12)
+            plt.subplots_adjust(hspace=0.4)
     return fig
+
 
 def predict_and_plot(input_file, target_file, resize_ratio=1.0, checkpoint_path=None, model=None, imgNorm="sub_and_divide"):
 
@@ -189,7 +225,7 @@ def predict_and_plot(input_file, target_file, resize_ratio=1.0, checkpoint_path=
                                          model=model, output_type='heatmap', imgNorm=imgNorm)
     target_img = cv2.imread(target_file, 1)
     target_img = cv2.resize(target_img, (image.shape[0], image.shape[1]), interpolation=cv2.INTER_NEAREST)
-    fig = plot_predictions(image, target_img, heatmap)
+    fig = plot_predictions(image, targets=target_img, heatmaps=heatmap)
     return fig
 
 if __name__ == '__main__':
