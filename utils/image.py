@@ -34,12 +34,14 @@ label_list = [
     'crater'
     ]
 
+
 def recognize_rgb_map(x):
 
     if np.any(np.alltrue(x == rgb_map_v1['cone'], axis=2)):
         return rgb_map_v1
     else:
         return rgb_map_v2
+
 
 def image_to_labelmap(x, rgb_map=rgb_map, label_map=label_map):
     
@@ -98,7 +100,7 @@ def sample_image(x, y, out_size=(300, 300), max_zoom=1.0):
     sy = y[dy:dy+ph, dx:dx+pw]
     
     # scale
-    sx = cv2.resize(sx, out_size, interpolation = cv2.INTER_NEAREST)
+    sx = cv2.resize(sx, out_size, interpolation=cv2.INTER_NEAREST)
     sy = cv2.resize(sy, out_size, interpolation=cv2.INTER_NEAREST)
     return sx, sy
 
