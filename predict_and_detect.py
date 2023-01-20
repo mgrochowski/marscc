@@ -3,6 +3,7 @@
 from __future__ import print_function, division, absolute_import, unicode_literals
 
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 import click
 import cv2
@@ -15,15 +16,16 @@ from utils.image import labelmap_to_image, split_image, grayscale_to_rgb
 from utils.download import download_model
 from keras_segmentation.models.config import IMAGE_ORDERING
 
+
 @click.command()
 @click.option('--input_file', default=None, help='Input image with Mars surface')
 @click.option('--input_width', default=None, help='Model input width [in ptx]', type=int)
 @click.option('--input_height', default=None, help='Model input height [in ptx]', type=int)
-@click.option('--overlap', default=0, help='Patch overlaping size (in pixels or ratio)')
+@click.option('--overlap', default=0, help='Patch overlapping size (in pixels or ratio)')
 @click.option('--resize_ratio', default=1.0, help='Scaling ratio')
 @click.option('--checkpoint_path', default=None, help='Path to model checkpoint')
 @click.option('--output_dir', default='detection_output', help='Output directory')
-@click.option('--norm', default='sub_and_divide', help='Imega normalization: sub_and_divide [-1, 1], sub_mean  [103.939, 116.779, 123.68], divide  [0,1]]')
+@click.option('--norm', default='sub_and_divide', help='Image normalization: sub_and_divide [-1, 1], sub_mean  [103.939, 116.779, 123.68], divide  [0,1]]')
 def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
         output_dir='detection_output', checkpoint_path=None, norm='sub_and_divide'):
 
@@ -42,7 +44,7 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
     file_path = str(o_dir / i_name) + '_segmentation.png'
     cv2.imwrite(file_path, output_image_rgb)
 
-    results = detect_cones_and_craters(labels=output_image, min_area=10,
+    results = detect_cones_and_craters(label_image=output_image, min_area=10,
                                        min_solidity=0.5)
 
     log = print_detections(results)
@@ -63,7 +65,7 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
                         checkpoint_path=None, model=None, output_type='labels', imgNorm="sub_and_divide",
                         batch_size=32):
     # output_type: 'labels' - return segmentation as labels, shape [width, height]
-    #              'heatmap' - return segmentation as heatmap, shape [width, heaight, n_classes]
+    #              'heatmap' - return segmentation as heatmap, shape [width, height, n_classes]
 
     if model is None:
         if checkpoint_path is None:
@@ -105,7 +107,7 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
         input_images.append(patch_x)
 
     # normalize data
-    input_images = np.array([ get_image_array(inp, input_width, input_height, ordering=IMAGE_ORDERING, imgNorm=imgNorm) for inp in input_images])
+    input_images = np.array([get_image_array(inp, input_width, input_height, ordering=IMAGE_ORDERING, imgNorm=imgNorm) for inp in input_images])
 
     n_images = input_images.shape[0]
     n_steps = n_images // batch_size
@@ -151,7 +153,6 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
 
     return x, image
 
-import matplotlib.pyplot as plt
 
 def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox=None, texts=None, offset=20):
 
@@ -163,21 +164,21 @@ def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox
 
     n_cols = 5
     if targets is None or targets[0] is None:
-        n_cols = n_cols -1
+        n_cols = n_cols - 1
         targets = [None] * n_rows
     if heatmaps is None or heatmaps[0] is None:
         n_cols = n_cols - 2
         heatmaps = [None] * n_rows
     if bbox is None or bbox[0] is None:
-        bbox = [None]  * n_rows
+        bbox = [None] * n_rows
     if predictions is None or predictions[0] is None:
-        predictions = [None]  * n_rows
+        predictions = [None] * n_rows
     if texts is None or texts[0] is None:
         texts = [None] * n_rows
 
     fig, axs = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 5 * n_rows))
     if n_rows == 1:
-        axs = [ axs ]
+        axs = [axs]
 
     for ax, image, target, prediction, heatmap, bb, text in zip(axs, images, targets, predictions, heatmaps, bbox, texts):
 
@@ -210,8 +211,8 @@ def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox
             y1, x1, y2, x2 = bb
 
             for i in range(n_cols):
-              ax[i].set_xlim((x1-offset, x2+offset))
-              ax[i].set_ylim((y2+offset, y1-offset))
+                ax[i].set_xlim((x1-offset, x2+offset))
+                ax[i].set_ylim((y2+offset, y1-offset))
         if text is not None:
             yy1, yy2 = ax[0].get_ylim()
             ax[0].text(0, (yy2-yy1) * 0.1, text, fontsize=12)
@@ -227,6 +228,7 @@ def predict_and_plot(input_file, target_file, resize_ratio=1.0, checkpoint_path=
     target_img = cv2.resize(target_img, (image.shape[0], image.shape[1]), interpolation=cv2.INTER_NEAREST)
     fig = plot_predictions(image, targets=target_img, heatmaps=heatmap)
     return fig
+
 
 if __name__ == '__main__':
 

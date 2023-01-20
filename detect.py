@@ -9,6 +9,7 @@ import cv2
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 
 from skimage.color import gray2rgb
 from skimage.measure import regionprops
@@ -18,7 +19,8 @@ from skimage.measure import label as label_region
 
 from utils.image import image_to_labelmap, label_map, recognize_rgb_map
 
-label_names = ['cone', 'crater']
+label_names = ('cone', 'crater')
+
 
 @click.command()
 @click.option('--input_file', default=None, help='Input file with annotations (labels)')
@@ -73,37 +75,47 @@ def run(input_file, input_image=None, min_area=10, min_solidity=0.5, output_dir=
     print('Results saved in %s' % output_dir)
 
 
+def detect_cones_and_craters(label_image=None, heatmap=None, min_area=0, min_solidity=0.0, label_names=label_names):
 
-def detect_cones_and_craters(labels, min_area=10, min_solidity=0.5, label_names=label_names):
+    if label_image is None:
+        if heatmap is None:
+            raise Exception('Provide label_image or heatmap argument')
+        else:
+            label_image = heatmap.argmax(axis=2)
+    else:
+        if heatmap is None:
+            heatmap = np.ones((label_image.shape[0], label_image.shape[1], len(label_map)), dtype=np.float)
     detected = {}
 
     # detect
     for label in label_names:
-        label_image = detection(labels, label=label_map[label])
-        res = regionprops(label_image)
+        label_id = label_map[label]
+        label_image_det = detection(label_image, label=label_id)
+        res = regionprops(label_image_det, intensity_image=heatmap[:, :, label_id])
 
         detected[label] = res
-        print('%s detected %d objects' % (label, len(res)))
+        # print('%s detected %d objects' % (label, len(res)))
 
     # filter
-    for label in label_names:
+    if min_area > 0 or min_solidity > 0.0:
+        for label in label_names:
 
-        res = detected[label]
-        res_filtered = []
-        for region in res:
+            res = detected[label]
+            res_filtered = []
+            for region in res:
 
-            # take regions with large enough areas
-            if region.area >= min_area and region.solidity >= min_solidity:
-                res_filtered.append(region)
-            else:
-                reasons = []
-                if region.area < min_area: reasons.append('area %.1f < %.1f' % (region.area, min_area))
-                if region.solidity < min_solidity: reasons.append('solidity %.1f < %.1f' % (region.solidity, min_solidity))
+                # take regions with large enough areas
+                if region.area >= min_area and region.solidity >= min_solidity:
+                    res_filtered.append(region)
+                else:
+                    reasons = []
+                    if region.area < min_area: reasons.append('area %.1f < %.1f' % (region.area, min_area))
+                    if region.solidity < min_solidity: reasons.append('solidity %.1f < %.1f' % (region.solidity, min_solidity))
 
-                print('Ignoring region %d [%s] at %.0f,%.0f, approx. diameter %.1f, %s ' %
-                      (region.label, label, region.centroid[0], region.centroid[1], 2.0 * np.sqrt(region.area / np.pi), ", ".join(reasons)))
+                    print('Ignoring region %d [%s] at %.0f,%.0f, approx. diameter %.1f, %s ' %
+                          (region.label, label, region.centroid[0], region.centroid[1], 2.0 * np.sqrt(region.area / np.pi), ", ".join(reasons)))
 
-        detected[label] = res_filtered
+            detected[label] = res_filtered
 
     return detected
 
@@ -159,7 +171,7 @@ def print_detections(detected):
         table = detections_to_datatable(detected, sort_by='area')
 
     if not table.empty:
-        text = table.groupby('label').agg({'area' : ['count', 'mean', 'std', 'min', 'max']}).to_string()
+        text = table.groupby('label').agg({'area': ['count', 'mean', 'std', 'min', 'max']}).to_string()
         text += '\n\n' + table.to_string()
     else:
         text = 'No objects detected'
@@ -170,17 +182,18 @@ def print_detections(detected):
 
 def detections_to_datatable(detections, sort_by='area'):
 
-    tables = []
+    dt = pd.DataFrame(columns=['label', 'id', 'area', 'bbox', 'centroid', 'solidity', 'confidence', 'feret_diameter_max',
+                               'equivalent_diameter'])
+    i = 0
     for label in detections:
-        dt = pd.DataFrame(columns=['label', 'id', 'area', 'bbox', 'c_x', 'c_y', 'solidity'])
-        for i, region in enumerate(detections[label]):
-            dt.loc[i] = [label, int(region.label), float(region.area), str(region.bbox), float(region.centroid[0]),
-                         float(region.centroid[1]), float(region.solidity)]
-        tables.append(dt)
+        for region in detections[label]:
+            dt.loc[i] = [label, int(region.label), float(region.area), np.array(region.bbox), np.array(region.centroid),
+                         float(region.solidity), float(region.max_intensity), float(region.feret_diameter_max),
+                         float(region.equivalent_diameter)]
+            i = i + 1
 
-    result = pd.concat(tables, axis=0)
-    result['diameter'] = 2.0 * np.sqrt(result['area'] / np.pi)
-    return result.sort_values(by=[sort_by], ascending=False)
+    # dt['diameter'] = 2.0 * np.sqrt(dt['area'] / np.pi)
+    return dt.sort_values(by=[sort_by], ascending=False)
 
 
 def detection(x, label=1):
@@ -200,25 +213,24 @@ def detection(x, label=1):
 def class_report(cm, target_names=None):
 
     print("Confusion matrix")
-    print("true \ predicted")
+    print("true \\ predicted")
 
-    print(*[ ("%10s  " % target_names[i]) + str(row)[1:-1] for i, row in enumerate(cm)], sep='\n')
+    print(*[("%10s  " % target_names[i]) + str(row)[1:-1] for i, row in enumerate(cm)], sep='\n')
 
     print("\n     label    precision  recall  f1-score   support")
     for i in range(cm.shape[0]):
-        n = cm[i,:].sum()
+        n = cm[i, :].sum()
         if n > 0:
-            rec = cm[i,i] / n
+            rec = cm[i, i] / n
         else:
             rec = 0.0
-        prec = cm[i,i] / cm[:,i].sum()
+        prec = cm[i, i] / cm[:, i].sum()
         if prec + rec > 0:
             f1 = 2 * (prec * rec) / (prec + rec)
         else:
             f1 = 0.0
-        print("%10s %10.2f %10.2f %10.2f %3d" % (target_names[i], prec, rec, f1, n ))
+        print("%10s %10.2f %10.2f %10.2f %3d" % (target_names[i], prec, rec, f1, n))
 
-import numpy as np
 
 def iou_bbox(bb1, bb2):
     """
@@ -226,8 +238,8 @@ def iou_bbox(bb1, bb2):
 
     Parameters
     ----------
-    bb1 : coords [x1, y1, x2, y2]
-    bb2 : coords [x1, y1, x2, y2]
+    bb1 : cords [x1, y1, x2, y2]
+    bb2 : cords [x1, y1, x2, y2]
 
     Returns
     -------
@@ -261,7 +273,7 @@ def iou_bbox(bb1, bb2):
 def detection_report(true_regions, predicted_regions, iou_threshold=0.5):
 
     label_names = []
-    label_idx = { }
+    label_idx = {}
 
     predicted_reg_list = []
     target_reg_list = []
@@ -281,18 +293,18 @@ def detection_report(true_regions, predicted_regions, iou_threshold=0.5):
     bcg_idx = len(label_names)   # background index
     label_names.append('background')
 
-    # count mached and conf-mat
+    # count matched and conf-mat
     matched_target = np.zeros((len(target_reg_list, )))
     matched_pred = np.zeros((len(predicted_reg_list, )))
 
     conff = np.zeros((len(label_names), len(label_names)), dtype=np.int)
 
-    summary = { 'errors': [], 'missing': [], 'added': [], 'miss_iou' : [] , 'confusion_matrix': None }
+    summary = {'errors': [], 'missing': [], 'added': [], 'miss_iou': [], 'confusion_matrix': None}
     # y_true, y_pred  = [], []
     for i, tr in enumerate(target_reg_list):
         for j, sr in enumerate(predicted_reg_list):
-            # in_ptx = intersection_points(tr[0].coords, sr[0].coords, treshold=len(tr[0].coords))
-            # ptx_iou = float(len(in_ptx)) / (len(tr[0].coords) + len(sr[0].coords) - len(in_ptx))
+            # in_ptx = intersection_points(tr[0].cords, sr[0].cords, threshold=len(tr[0].cords))
+            # ptx_iou = float(len(in_ptx)) / (len(tr[0].cords) + len(sr[0].cords) - len(in_ptx))
             iou = iou_bbox(tr[0].bbox, sr[0].bbox)
             if iou > iou_threshold:
                 matched_target[i] = matched_target[i] + 1
@@ -329,7 +341,8 @@ def intersection_points(x, y, threshold=1):
     for ex in x:
         if np.any(np.all(ex == y, axis=1)):
             points.append(ex)
-        if len(points) >= threshold: break
+        if len(points) >= threshold:
+            break
 
     return points
 
