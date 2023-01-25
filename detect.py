@@ -164,6 +164,29 @@ def draw_regions2(image, detected, color=None, thickness=3):
     return img_reg
 
 
+def draw_regions3(image, detection_table, color=None, thickness=3):
+
+    if color is None:
+        color = [[255, 0, 0], [0, 0, 255], [0, 255, 0]]
+
+    img_reg = image.copy()
+    if len(img_reg.shape) == 2:
+        img_reg = gray2rgb(img_reg)
+
+    # alpha = 0.5
+
+    for label, bbox in zip(detection_table.label, detection_table.bbox):
+        # draw rectangle around segmented objects
+        minr, minc, maxr, maxc = bbox
+        # rr, cc = rectangle_perimeter(start=(minr, minc), end=(maxr, maxc), shape=img_reg.shape)
+        # set_color(img_reg, (rr, cc), color[i], alpha=alpha)
+        cv2.rectangle(img_reg, (minc, minr), (maxc, maxr), color=color[label_map[label]], thickness=thickness)
+
+    return img_reg
+
+
+
+
 def print_detections(detected):
 
     table = detected
@@ -345,6 +368,66 @@ def intersection_points(x, y, threshold=1):
             break
 
     return points
+
+
+def match_detections(true_regions, predicted_regions):
+
+    columns = [ 'pred_' + c for c in predicted_regions.columns] + [ 'true_' + c for c in true_regions.columns]  + [ 'iou', 'message']
+    matched = pd.DataFrame(columns=columns)
+
+    matched_target = np.zeros((len(true_regions, )))
+    matched_pred = np.zeros((len(predicted_regions, )))
+
+    k = 0
+    for i in range(len(true_regions)):
+        bbt  = true_regions.bbox[i]
+        # find region with best match
+        for j in range(len(predicted_regions)):
+            bbp  = predicted_regions.bbox[j]
+            iou = iou_bbox(bbt, bbp)
+            if iou > 0.0:
+                # print(i, j, bbt, bbp, iou)
+                msg = ''
+                if true_regions.label[i] == predicted_regions.label[j]:
+                    msg = 'Correct, '
+                else:
+                    msg = 'Error, '
+                matched_target[i] = matched_target[i] + 1
+                matched_pred[j] = matched_pred[j] + 1
+                matched.loc[k] = predicted_regions.iloc[j].to_list()  +  true_regions.iloc[i].to_list() + [ iou, msg]
+                k = k + 1
+
+    missing_object = [ 'background', np.NAN, np.NAN, np.NAN, np.NAN, np.NAN, np.NAN, np.NAN, np.NAN ]
+    for i in np.where(matched_target == 0)[0]:
+        matched.loc[k] = missing_object  +  true_regions.iloc[i].to_list() + [ np.NaN, 'Missing detection, ' ]
+        k = k + 1
+
+    for j in np.where(matched_pred == 0)[0]:
+        matched.loc[k] = predicted_regions.iloc[j].to_list()  +  missing_object + [ np.NaN,  'False detection, ' ]
+        k = k + 1
+
+    return matched
+
+
+def filter_matched_detections(matched_dt, max_diameter=0, iou_threshold=0.5):
+
+    result = matched_dt.copy()
+    # filter small objects
+    too_small = result['pred_equivalent_diameter'] < max_diameter
+    result.loc[too_small, 'pred_label']  = 'background'
+    result.loc[too_small, 'message'] = matched_dt.loc[too_small, 'message'] + 'Predicted object to small, '
+
+    too_small = result['true_equivalent_diameter'] < max_diameter
+    result.loc[too_small, 'true_label']  = 'background'
+    result.loc[too_small, 'message'] = matched_dt.loc[too_small, 'message'] + 'Target object to small, '
+
+    # filter to small iou
+    iou_threshold = 0.1
+    too_small = result['iou'] < iou_threshold
+    result.loc[too_small, 'pred_label']  = 'background'
+    result.loc[too_small, 'message'] = matched_dt.loc[too_small, 'message'] + 'IOU < %.3f, ' % iou_threshold
+
+    return result
 
 
 if __name__ == '__main__':
