@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import click
 import cv2
 import numpy as np
+from matplotlib import patches
 
 from detect import detect_cones_and_craters, print_detections, draw_regions2
 from keras_segmentation.data_utils.data_loader import class_colors, get_image_array
@@ -154,11 +155,11 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
     return x, image
 
 
-def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox=None, texts=None, offset=20):
+def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox=None, texts=None, offset=20, pred_bbox=None):
 
     if isinstance(images, np.ndarray) and images.ndim == 2:
         # single grayscale image
-        images, targets, predictions, heatmaps, bbox, texts = [images], [targets], [predictions], [heatmaps], [bbox], [texts]
+        images, targets, predictions, heatmaps, bbox, texts, pred_bbox = [images], [targets], [predictions], [heatmaps], [bbox], [texts], [pred_bbox]
 
     n_rows = len(images)
 
@@ -173,30 +174,37 @@ def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox
         bbox = [None] * n_rows
     if predictions is None or predictions[0] is None:
         predictions = [None] * n_rows
+        if heatmaps[0] is None:
+            n_cols = n_cols - 1
     if texts is None or texts[0] is None:
         texts = [None] * n_rows
+    if pred_bbox is None or pred_bbox[0] is None:
+        pred_bbox = [None] * n_rows
 
     fig, axs = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 5 * n_rows))
     if n_rows == 1:
         axs = [axs]
 
-    for ax, image, target, prediction, heatmap, bb, text in zip(axs, images, targets, predictions, heatmaps, bbox, texts):
+    for ax, image, target, prediction, heatmap, bb, text, pred_bb in zip(axs, images, targets, predictions, heatmaps, bbox, texts, pred_bbox):
 
         k = 0
-        ax[k].imshow(image, cmap='Greys')
+        ax[k].imshow(image, cmap='gray')
         ax[k].set_title('Input image')
+        ax_image = ax[k]
 
         if target is not None:
             k = k + 1
             ax[k].imshow(target, vmin=0,  vmax=2)
             ax[k].set_title('Target')
 
-        k = k + 1
-        if prediction is None:
-            ax[k].imshow(heatmap.argmax(axis=-1), vmin=0,  vmax=2)
-        else:
+        ax_pred = None
+        if prediction is not None or heatmap is not None:
+            if prediction is None:
+                prediction = heatmap.argmax(axis=-1)
+            k = k + 1
             ax[k].imshow(prediction, vmin=0,  vmax=2)
-        ax[k].set_title('Segmentation')
+            ax[k].set_title('Segmentation')
+            ax_pred = ax[k]
 
         if heatmap is not None:
             k = k + 1
@@ -213,9 +221,19 @@ def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox
             for i in range(n_cols):
                 ax[i].set_xlim((x1-offset, x2+offset))
                 ax[i].set_ylim((y2+offset, y1-offset))
+
+            rect = patches.Rectangle(xy=(x1, y1), width=x2-x1, height=y2-y1, linewidth=1, edgecolor='r', facecolor='none')
+            ax_image.add_patch(rect)
+
+        if pred_bb is not None and not np.isnan(pred_bb).any() and ax_pred is not None:
+            y1, x1, y2, x2 = pred_bb
+            rect = patches.Rectangle(xy=(x1, y1), width=x2-x1, height=y2-y1, linewidth=1, edgecolor='r', facecolor='none')
+            ax_pred.add_patch(rect)
+
         if text is not None:
             yy1, yy2 = ax[0].get_ylim()
-            ax[0].text(0, (yy2-yy1) * 0.1, text, fontsize=12)
+            xx1, xx2 = ax[0].get_xlim()
+            ax[0].text(xx1, yy2-np.abs(yy2-yy1) * 0.1, text, fontsize=12)
             plt.subplots_adjust(hspace=0.4)
     return fig
 
