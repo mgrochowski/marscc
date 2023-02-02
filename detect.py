@@ -215,12 +215,12 @@ def print_detections(detected):
 
 def detections_to_datatable(detections, sort_by='area'):
 
-    dt = pd.DataFrame(columns=['label', 'id', 'area', 'bbox', 'centroid', 'solidity', 'confidence', 'feret_diameter_max',
+    dt = pd.DataFrame(columns=['label', 'area', 'bbox', 'centroid', 'solidity', 'confidence', 'feret_diameter_max',
                                'equivalent_diameter'])
     i = 0
     for label in detections:
         for region in detections[label]:
-            dt.loc[i] = [label, int(region.label), float(region.area), np.array(region.bbox), np.array(region.centroid),
+            dt.loc[i] = [label, float(region.area), np.array(region.bbox), np.array(region.centroid),
                          float(region.solidity), float(region.max_intensity), float(region.feret_diameter_max),
                          float(region.equivalent_diameter)]
             i = i + 1
@@ -382,39 +382,44 @@ def intersection_points(x, y, threshold=1):
 
 def match_detections(true_regions, predicted_regions):
 
-    n_columns = len(true_regions.columns)
-    columns = [ 'pred_' + c for c in predicted_regions.columns] + [ 'true_' + c for c in true_regions.columns]  + [ 'iou', 'message']
+    input_columns = [ 'label', 'bbox', 'centroid', 'confidence', 'file_name', 'diameter_km' ]
+    n_columns = len(input_columns)
+    t_regions = true_regions[input_columns]
+    p_regions = predicted_regions[input_columns]
+    columns = [ 'pred_' + c for c in input_columns] +  [ 'pred_id'] + [ 'true_' + c for c in input_columns]  + ['true_id', 'iou', 'message']
     matched = pd.DataFrame(columns=columns)
 
-    matched_target = np.zeros((len(true_regions, )))
-    matched_pred = np.zeros((len(predicted_regions, )))
+    matched_target = np.zeros((len(t_regions, )))
+    matched_pred = np.zeros((len(p_regions, )))
 
     k = 0
-    for i in range(len(true_regions)):
-        bbt  = true_regions.bbox[i]
+    for i in range(len(t_regions)):
+        true_id = t_regions.index[i]
+        bbt  = t_regions.bbox[i]
         # find region with best match
-        for j in range(len(predicted_regions)):
-            bbp  = predicted_regions.bbox[j]
+        for j in range(len(p_regions)):
+            pred_id = p_regions.index[j]
+            bbp  = p_regions.bbox[j]
             iou = iou_bbox(bbt, bbp)
             if iou > 0.0:
                 # print(i, j, bbt, bbp, iou)
                 msg = ''
-                if true_regions.label[i] == predicted_regions.label[j]:
-                    msg = 'Correct, '
+                if t_regions.label[i] == p_regions.label[j]:
+                    msg = 'Correct: %s, ' % t_regions.label[i]
                 else:
                     msg = 'Error, '
                 matched_target[i] = matched_target[i] + 1
                 matched_pred[j] = matched_pred[j] + 1
-                matched.loc[k] = predicted_regions.loc[j].to_list()  +  true_regions.loc[i].to_list() + [ iou, msg]
+                matched.loc[k] = p_regions.loc[j].to_list()  + [pred_id] +  t_regions.loc[i].to_list() + [ true_id, iou, msg]
                 k = k + 1
 
-    missing_object = [ 'background' ] + [np.NAN] * (n_columns-1)
+    missing_object = [ 'background' ] + [np.NAN] * (n_columns)
     for i in np.where(matched_target == 0)[0]:
-        matched.loc[k] = missing_object  +  true_regions.loc[i].to_list() + [ np.NaN, 'Missing detection, ' ]
+        matched.loc[k] = missing_object  +  t_regions.loc[i].to_list() + [ t_regions.index[i], np.NaN, 'Missing detection, ' ]
         k = k + 1
 
     for j in np.where(matched_pred == 0)[0]:
-        matched.loc[k] = predicted_regions.loc[j].to_list()  +  missing_object + [ np.NaN,  'False detection, ' ]
+        matched.loc[k] = p_regions.loc[j].to_list()  +  [p_regions.index[j]] + missing_object + [ np.NaN,  'False detection, ' ]
         k = k + 1
 
     return matched
