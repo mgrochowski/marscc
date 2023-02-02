@@ -75,7 +75,12 @@ def run(input_file, input_image=None, min_area=10, min_solidity=0.5, output_dir=
     print('Results saved in %s' % output_dir)
 
 
-def detect_cones_and_craters(label_image=None, heatmap=None, min_area=0, min_solidity=0.0, label_names=label_names):
+def detect_cones_and_craters(label_image=None, heatmap=None, min_area=0, min_solidity=0.0, label_names=label_names,
+                             min_significance=None):
+    # if min_significance == None then
+    #      label_image = heatmap.argmax(axis=2)
+    # else
+    #     label_image = heatmap[:,:, label] >= min_significance  * label_id
 
     if label_image is None:
         if heatmap is None:
@@ -90,7 +95,12 @@ def detect_cones_and_craters(label_image=None, heatmap=None, min_area=0, min_sol
     # detect
     for label in label_names:
         label_id = label_map[label]
-        label_image_det = detection(label_image, label=label_id)
+        if min_significance is None:
+            label_image_input = label_image
+        else:
+            label_image_input = np.zeros(heatmap[:, :, label_id].shape)
+            label_image_input[heatmap[:, :, label_id] >= min_significance] = label_id
+        label_image_det = detection(label_image_input, label=label_id)
         res = regionprops(label_image_det, intensity_image=heatmap[:, :, label_id])
 
         detected[label] = res
@@ -372,6 +382,7 @@ def intersection_points(x, y, threshold=1):
 
 def match_detections(true_regions, predicted_regions):
 
+    n_columns = len(true_regions.columns)
     columns = [ 'pred_' + c for c in predicted_regions.columns] + [ 'true_' + c for c in true_regions.columns]  + [ 'iou', 'message']
     matched = pd.DataFrame(columns=columns)
 
@@ -394,38 +405,44 @@ def match_detections(true_regions, predicted_regions):
                     msg = 'Error, '
                 matched_target[i] = matched_target[i] + 1
                 matched_pred[j] = matched_pred[j] + 1
-                matched.loc[k] = predicted_regions.iloc[j].to_list()  +  true_regions.iloc[i].to_list() + [ iou, msg]
+                matched.loc[k] = predicted_regions.loc[j].to_list()  +  true_regions.loc[i].to_list() + [ iou, msg]
                 k = k + 1
 
-    missing_object = [ 'background', np.NAN, np.NAN, np.NAN, np.NAN, np.NAN, np.NAN, np.NAN, np.NAN ]
+    missing_object = [ 'background' ] + [np.NAN] * (n_columns-1)
     for i in np.where(matched_target == 0)[0]:
-        matched.loc[k] = missing_object  +  true_regions.iloc[i].to_list() + [ np.NaN, 'Missing detection, ' ]
+        matched.loc[k] = missing_object  +  true_regions.loc[i].to_list() + [ np.NaN, 'Missing detection, ' ]
         k = k + 1
 
     for j in np.where(matched_pred == 0)[0]:
-        matched.loc[k] = predicted_regions.iloc[j].to_list()  +  missing_object + [ np.NaN,  'False detection, ' ]
+        matched.loc[k] = predicted_regions.loc[j].to_list()  +  missing_object + [ np.NaN,  'False detection, ' ]
         k = k + 1
 
     return matched
 
 
-def filter_matched_detections(matched_dt, max_diameter=0, iou_threshold=0.5):
+def filter_matched_detections(matched_dt, min_diameter=0, iou_threshold=0.5):
+
+    if isinstance(min_diameter, dict):
+        min_dia = min_diameter
+    else:
+        min_dia ={ label:min_diameter for label in label_names}
 
     result = matched_dt.copy()
-    # filter small objects
-    too_small = result['pred_equivalent_diameter'] < max_diameter
-    result.loc[too_small, 'pred_label']  = 'background'
-    result.loc[too_small, 'message'] = matched_dt.loc[too_small, 'message'] + 'Predicted object to small, '
 
-    too_small = result['true_equivalent_diameter'] < max_diameter
-    result.loc[too_small, 'true_label']  = 'background'
-    result.loc[too_small, 'message'] = matched_dt.loc[too_small, 'message'] + 'Target object to small, '
+    # filter small objects
+    for label in min_dia:
+        too_small = (result['pred_equivalent_diameter'] < min_dia[label] ) & (result['pred_label'] == label)
+        result.loc[too_small, 'pred_label']  = 'background'
+        result.loc[too_small, 'message'] = result.loc[too_small, 'message'] + 'Predicted %s to small, ' % label
+
+        too_small = (result['true_equivalent_diameter'] < min_dia[label]) & (result['true_label'] == label)
+        result.loc[too_small, 'true_label']  = 'background'
+        result.loc[too_small, 'message'] = result.loc[too_small, 'message'] + 'Target %s to small, ' % label
 
     # filter to small iou
-    iou_threshold = 0.1
     too_small = result['iou'] < iou_threshold
-    result.loc[too_small, 'pred_label']  = 'background'
-    result.loc[too_small, 'message'] = matched_dt.loc[too_small, 'message'] + 'IOU < %.3f, ' % iou_threshold
+    result.loc[too_small, 'true_label']  = 'background'
+    result.loc[too_small, 'message'] = result.loc[too_small, 'message'] + 'IOU < %.3f, ' % iou_threshold
 
     return result
 
