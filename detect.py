@@ -76,7 +76,7 @@ def run(input_file, input_image=None, min_area=10, min_solidity=0.5, output_dir=
 
 
 def detect_cones_and_craters(label_image=None, heatmap=None, min_area=0, min_solidity=0.0, label_names=label_names,
-                             min_significance=None):
+                             min_confidence=None):
     # if min_significance == None then
     #      label_image = heatmap.argmax(axis=2)
     # else
@@ -95,11 +95,11 @@ def detect_cones_and_craters(label_image=None, heatmap=None, min_area=0, min_sol
     # detect
     for label in label_names:
         label_id = label_map[label]
-        if min_significance is None:
+        if min_confidence is None:
             label_image_input = label_image
         else:
             label_image_input = np.zeros(heatmap[:, :, label_id].shape)
-            label_image_input[heatmap[:, :, label_id] >= min_significance] = label_id
+            label_image_input[heatmap[:, :, label_id] >= min_confidence] = label_id
         label_image_det = detection(label_image_input, label=label_id)
         res = regionprops(label_image_det, intensity_image=heatmap[:, :, label_id])
 
@@ -380,74 +380,107 @@ def intersection_points(x, y, threshold=1):
     return points
 
 
-def match_detections(true_regions, predicted_regions):
+def match_detections(true_regions, predicted_regions, iou_threshold=0.0):
 
-    input_columns = [ 'label', 'bbox', 'centroid', 'confidence', 'file_name', 'diameter_km' ]
+    input_columns = ['label', 'bbox', 'centroid', 'confidence', 'file_name', 'diameter_km']
     n_columns = len(input_columns)
     t_regions = true_regions[input_columns]
     p_regions = predicted_regions[input_columns]
-    columns = [ 'pred_' + c for c in input_columns] +  [ 'pred_id'] + [ 'true_' + c for c in input_columns]  + ['true_id', 'iou', 'message']
+    columns = ['pred_' + c for c in input_columns] + ['pred_id'] + ['true_' + c for c in input_columns] + ['true_id', 'iou', 'message']
     matched = pd.DataFrame(columns=columns)
 
-    matched_target = np.zeros((len(t_regions, )))
-    matched_pred = np.zeros((len(p_regions, )))
+    matched_target = np.zeros((len(t_regions, )), dtype=np.int32)
+    matched_pred = np.zeros((len(p_regions, )),  dtype=np.int32)
+
+    missing_object = ['background'] + [np.NAN] * n_columns
 
     k = 0
-    for i in range(len(t_regions)):
-        true_id = t_regions.index[i]
-        bbt  = t_regions.bbox[i]
+    for true_id in t_regions.index:
+        bbt = t_regions.loc[true_id].bbox
+
         # find region with best match
-        for j in range(len(p_regions)):
-            pred_id = p_regions.index[j]
-            bbp  = p_regions.bbox[j]
+        for pred_id in p_regions.index:
+            bbp = p_regions.loc[pred_id].bbox
             iou = iou_bbox(bbt, bbp)
             if iou > 0.0:
+                matched_target[true_id] = matched_target[true_id] + 1
+                matched_pred[pred_id] = matched_pred[pred_id] + 1
                 # print(i, j, bbt, bbp, iou)
-                msg = ''
-                if t_regions.label[i] == p_regions.label[j]:
-                    msg = 'Correct: %s, ' % t_regions.label[i]
-                else:
-                    msg = 'Error, '
-                matched_target[i] = matched_target[i] + 1
-                matched_pred[j] = matched_pred[j] + 1
-                matched.loc[k] = p_regions.loc[j].to_list()  + [pred_id] +  t_regions.loc[i].to_list() + [ true_id, iou, msg]
+                msg = 'Correct: %s, ' % t_regions.loc[true_id].label if t_regions.loc[true_id].label == p_regions.loc[pred_id].label else 'Error, '
+                matched.loc[k] = p_regions.loc[pred_id].to_list() + [pred_id] + t_regions.loc[true_id].to_list() + [true_id, iou, msg]
                 k = k + 1
 
-    missing_object = [ 'background' ] + [np.NAN] * (n_columns)
+    # filter to small iou
+    if iou_threshold > 0.0:
+        too_small = matched['iou'] < iou_threshold
+        true_ids = matched[too_small].true_id
+        matched.loc[too_small, 'true_label'] = 'background'
+        matched.loc[too_small, 'message'] = matched.loc[too_small, 'message'] + 'IOU < %.3f, ' % iou_threshold
+        for i in true_ids.values:
+            matched_target[i] = matched_target[i] - 1
+
+    assert (matched_target >= 0).all()
+
+    # leave only winning prediction (all selected have IOU above threshold)
+    for i in np.where(matched_target > 1)[0]:
+        true_id = t_regions.index[i]
+        losers = matched[matched.true_id == true_id].sort_values('iou', ascending=False).iloc[1:]
+        matched.loc[losers.index, 'true_label'] = 'background'
+        matched_target[true_id] = matched_target[true_id] - len(losers)
+
+    # leave only winning prediction (all selected have IOU above threshold)
+    if (matched_pred > 1).any():
+        for i in np.where(matched_pred > 1)[0]:
+            pred_id = p_regions.index[i]
+            losers = matched[(matched.pred_id == pred_id) & (matched.true_label != 'background')].sort_values('iou', ascending=False).iloc[1:]
+            if len(losers) > 0:
+                matched.loc[losers.index, 'true_label'] = 'background'
+                matched_pred[pred_id] = matched_pred[pred_id] - len(losers)
+                for true_id in losers.true_id:
+                    matched_target[true_id] = matched_target[true_id] - 1
+
+            matched_pred[pred_id] = matched_pred[pred_id] - len(losers)
+
+    assert (matched_target >= 0).all()
+    assert (matched_target <= 1).all()
+
+    # add missing detections
     for i in np.where(matched_target == 0)[0]:
-        matched.loc[k] = missing_object  +  t_regions.loc[i].to_list() + [ t_regions.index[i], np.NaN, 'Missing detection, ' ]
+        matched.loc[k] = missing_object + t_regions.loc[i].to_list() + [i, np.NaN, 'Missing detection, ']
+        # print(t_regions.loc[i], i, matched_target[i])
         k = k + 1
 
+    assert (matched_pred >= 0).all()
+    assert (matched_pred <= 1).all()
+
     for j in np.where(matched_pred == 0)[0]:
-        matched.loc[k] = p_regions.loc[j].to_list()  +  [p_regions.index[j]] + missing_object + [ np.NaN,  'False detection, ' ]
+        matched.loc[k] = p_regions.loc[j].to_list() + [j] + missing_object + [np.NaN,  'False detection, ']
         k = k + 1
+
+    assert len(matched[matched.true_label != 'background'].true_id.unique()) == len(matched_target)
+    assert len(matched[matched.pred_label != 'background'].pred_id.unique()) == len(matched_pred)
 
     return matched
 
 
-def filter_matched_detections(matched_dt, min_diameter=0, iou_threshold=0.5):
+def filter_matched_detections(matched_dt, min_diameter_km=0):
 
-    if isinstance(min_diameter, dict):
-        min_dia = min_diameter
+    if isinstance(min_diameter_km, dict):
+        min_dia = min_diameter_km
     else:
-        min_dia ={ label:min_diameter for label in label_names}
+        min_dia = {label: min_diameter_km for label in label_names}
 
     result = matched_dt.copy()
 
     # filter small objects
     for label in min_dia:
-        too_small = (result['pred_equivalent_diameter'] < min_dia[label] ) & (result['pred_label'] == label)
-        result.loc[too_small, 'pred_label']  = 'background'
+        too_small = (result['pred_diameter_km'] < min_dia[label]) & (result['pred_label'] == label)
+        result.loc[too_small, 'pred_label'] = 'background'
         result.loc[too_small, 'message'] = result.loc[too_small, 'message'] + 'Predicted %s to small, ' % label
 
-        too_small = (result['true_equivalent_diameter'] < min_dia[label]) & (result['true_label'] == label)
-        result.loc[too_small, 'true_label']  = 'background'
+        too_small = (result['true_diameter_km'] < min_dia[label]) & (result['true_label'] == label)
+        result.loc[too_small, 'true_label'] = 'background'
         result.loc[too_small, 'message'] = result.loc[too_small, 'message'] + 'Target %s to small, ' % label
-
-    # filter to small iou
-    too_small = result['iou'] < iou_threshold
-    result.loc[too_small, 'true_label']  = 'background'
-    result.loc[too_small, 'message'] = result.loc[too_small, 'message'] + 'IOU < %.3f, ' % iou_threshold
 
     return result
 
