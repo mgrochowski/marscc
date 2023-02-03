@@ -11,8 +11,8 @@ import numpy as np
 from matplotlib import patches
 
 from detect import detect_cones_and_craters, print_detections, draw_regions2
-from keras_segmentation.data_utils.data_loader import class_colors, get_image_array
-from keras_segmentation.predict import predict_multiple, model_from_checkpoint_path, predict
+from keras_segmentation.data_utils.data_loader import get_image_array
+from keras_segmentation.predict import model_from_checkpoint_path
 from utils.image import labelmap_to_image, split_image, grayscale_to_rgb
 from utils.download import download_model
 from keras_segmentation.models.config import IMAGE_ORDERING
@@ -31,8 +31,8 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
         output_dir='detection_output', checkpoint_path=None, norm='sub_and_divide'):
 
     heatmap, image = predict_large_image(input_file=input_file, input_width=input_width, input_height=input_height,
-                                       overlap=overlap, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
-                                              output_type='heatmap', imgNorm=norm)
+                                         overlap=overlap, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
+                                         output_type='heatmap', imgNorm=norm)
 
     output_image = np.argmax(heatmap, axis=2)
 
@@ -99,11 +99,11 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
         image_to_split = image
 
     padding = max(input_height, input_width) - overlap
-    patches = split_image(image_to_split, output_width=input_width, output_height=input_height, overlap=overlap,
-                          padding=padding)
+    image_patches = split_image(image_to_split, output_width=input_width, output_height=input_height, overlap=overlap,
+                                padding=padding)
 
     input_images = []
-    for i, patch in enumerate(patches):
+    for i, patch in enumerate(image_patches):
         patch_x, patch_info = patch
         input_images.append(patch_x)
 
@@ -135,7 +135,7 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
     # output_prediction = np.zeros((h_new + padding, w_new + padding))
     output_segmentation = np.zeros((h_new + padding, w_new + padding, n_classes))
 
-    for i, patch in enumerate(patches):
+    for i, patch in enumerate(image_patches):
         _, patch_info = patch
         sx, sy, ex, ey = patch_info
 
