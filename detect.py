@@ -10,6 +10,7 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import skimage
 
 from skimage.color import gray2rgb
 from skimage.measure import regionprops
@@ -382,7 +383,10 @@ def intersection_points(x, y, threshold=1):
 
 def match_detections(true_regions, predicted_regions, iou_threshold=0.0):
 
-    input_columns = ['label', 'bbox', 'centroid', 'confidence', 'file_name', 'diameter_km']
+    if 'org_centroid' in true_regions.columns and 'org_centroid' in predicted_regions.columns:
+        input_columns = ['label', 'bbox', 'org_centroid', 'confidence', 'file_name', 'diameter_km']
+    else:
+        input_columns = ['label', 'bbox', 'centroid', 'confidence', 'file_name', 'diameter_km']
     n_columns = len(input_columns)
     t_regions = true_regions[input_columns]
     p_regions = predicted_regions[input_columns]
@@ -405,7 +409,6 @@ def match_detections(true_regions, predicted_regions, iou_threshold=0.0):
             if iou > 0.0:
                 matched_target[true_id] = matched_target[true_id] + 1
                 matched_pred[pred_id] = matched_pred[pred_id] + 1
-                # print(i, j, bbt, bbp, iou)
                 msg = 'Correct: %s, ' % t_regions.loc[true_id].label if t_regions.loc[true_id].label == p_regions.loc[pred_id].label else 'Error, '
                 matched.loc[k] = p_regions.loc[pred_id].to_list() + [pred_id] + t_regions.loc[true_id].to_list() + [true_id, iou, msg]
                 k = k + 1
@@ -418,28 +421,41 @@ def match_detections(true_regions, predicted_regions, iou_threshold=0.0):
         matched.loc[too_small, 'message'] = matched.loc[too_small, 'message'] + 'IOU < %.3f, ' % iou_threshold
         for i in true_ids.values:
             matched_target[i] = matched_target[i] - 1
+        pred_ids = matched[too_small].pred_id
+        for i in pred_ids.values:
+            matched_pred[i] = matched_pred[i] - 1
 
     assert (matched_target >= 0).all()
+    assert (matched_pred >= 0).all()
 
     # leave only winning prediction (all selected have IOU above threshold)
-    for i in np.where(matched_target > 1)[0]:
-        true_id = t_regions.index[i]
-        losers = matched[matched.true_id == true_id].sort_values('iou', ascending=False).iloc[1:]
+    for true_id in np.where(matched_target > 1)[0]:
+        sorted = matched[(matched.true_id == true_id) & (matched.true_label != 'background')].sort_values('iou', ascending=False)
+        winner_id = sorted['true_id'].iloc[0]
+        losers = sorted.iloc[1:]
         matched.loc[losers.index, 'true_label'] = 'background'
+        matched.loc[losers.index, 'message'] =  matched.loc[losers.index, 'message'] + 'lose with true_id %d, ' % winner_id
         matched_target[true_id] = matched_target[true_id] - len(losers)
+        for pred_id in losers.pred_id:
+            matched_pred[pred_id] = matched_pred[pred_id] - 1
 
     # leave only winning prediction (all selected have IOU above threshold)
     if (matched_pred > 1).any():
-        for i in np.where(matched_pred > 1)[0]:
-            pred_id = p_regions.index[i]
-            losers = matched[(matched.pred_id == pred_id) & (matched.true_label != 'background')].sort_values('iou', ascending=False).iloc[1:]
+        for pred_id in np.where(matched_pred > 1)[0]:
+            sorted = matched[(matched.pred_id == pred_id) & (matched.true_label != 'background')].sort_values('iou', ascending=False)
+            winner_id = sorted['pred_id'].iloc[0]
+            losers = sorted.iloc[1:]
             if len(losers) > 0:
                 matched.loc[losers.index, 'true_label'] = 'background'
+                matched.loc[losers.index, 'message'] =  matched.loc[losers.index, 'message'] + 'lose with pred_id %d, ' % winner_id
                 matched_pred[pred_id] = matched_pred[pred_id] - len(losers)
                 for true_id in losers.true_id:
                     matched_target[true_id] = matched_target[true_id] - 1
 
             matched_pred[pred_id] = matched_pred[pred_id] - len(losers)
+
+    assert (matched_pred >= 0).all()
+    assert (matched_pred <= 1).all()
 
     assert (matched_target >= 0).all()
     assert (matched_target <= 1).all()
@@ -449,9 +465,6 @@ def match_detections(true_regions, predicted_regions, iou_threshold=0.0):
         matched.loc[k] = missing_object + t_regions.loc[i].to_list() + [i, np.NaN, 'Missing detection, ']
         # print(t_regions.loc[i], i, matched_target[i])
         k = k + 1
-
-    assert (matched_pred >= 0).all()
-    assert (matched_pred <= 1).all()
 
     for j in np.where(matched_pred == 0)[0]:
         matched.loc[k] = p_regions.loc[j].to_list() + [j] + missing_object + [np.NaN,  'False detection, ']
@@ -484,6 +497,26 @@ def filter_matched_detections(matched_dt, min_diameter_km=0):
 
     return result
 
+
+def merge_heatmaps(heatmaps, method='max', output_shape=None):
+
+    if output_shape is None:
+        output_shape = heatmaps[0].shape[:2]
+    n_channels = heatmaps[0].shape[2]
+
+    o_heatmap = np.zeros((output_shape[0], output_shape[1], n_channels), dtype=np.float64)
+
+    for heatmap in heatmaps:
+        for i in range(n_channels):
+            scaled_heatmap = skimage.transform.resize(heatmap[:, :, i], output_shape=output_shape)
+            if method == 'mean':
+                o_heatmap[:, :, i] = o_heatmap[:, :, i]/float(len(heatmaps)) + scaled_heatmap
+            elif method == 'max':
+                np.maximum(o_heatmap[:, :, i], scaled_heatmap, out=o_heatmap[:, :, i])
+            elif method == 'sum':
+                o_heatmap[:, :, i] = o_heatmap[:, :, i] + scaled_heatmap
+
+    return o_heatmap
 
 if __name__ == '__main__':
 
