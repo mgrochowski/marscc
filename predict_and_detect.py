@@ -98,9 +98,11 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
     else:
         image_to_split = image
 
-    padding = max(input_height, input_width) - overlap
+    assert max(input_height, input_width) > overlap
+    left_padding = max(input_height, input_width) // 2
     image_patches = split_image(image_to_split, output_width=input_width, output_height=input_height, overlap=overlap,
-                                padding=padding)
+                                padding=left_padding)
+
 
     input_images = []
     for i, patch in enumerate(image_patches):
@@ -133,8 +135,14 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
 
     # join
     # output_prediction = np.zeros((h_new + padding, w_new + padding))
-    output_segmentation = np.zeros((h_new + padding, w_new + padding, n_classes))
+    right_padding = max(input_height, input_width)
+    output_segmentation = np.zeros((left_padding + h_new + right_padding, left_padding + w_new + right_padding, n_classes))
 
+    output_normalization = 1.0
+    if overlap > 0:
+        output_normalization = np.zeros(output_segmentation.shape[:2])
+
+    # merge predictions into single big image
     for i, patch in enumerate(image_patches):
         _, patch_info = patch
         sx, sy, ex, ey = patch_info
@@ -146,16 +154,26 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
             heatmap = cv2.resize(heatmap, (ey - sy, ex - sx), interpolation=cv2.INTER_NEAREST)
 
         # output_prediction[sy:ey, sx:ex] = prediction
-        output_segmentation[sy:ey, sx:ex] = heatmap
+        if overlap > 0:
+            output_segmentation[sy:ey, sx:ex] = output_segmentation[sy:ey, sx:ex] + heatmap
+            output_normalization[sy:ey, sx:ex] = output_normalization[sy:ey, sx:ex] + 1.0
+        else:
+            output_segmentation[sy:ey, sx:ex] = heatmap
 
-    x = output_segmentation[:h_new, :w_new]
+    segmentation = output_segmentation[left_padding:left_padding + h_new, left_padding:left_padding + w_new]
+    if overlap > 0:
+        output_normalization = output_normalization[left_padding:left_padding + h_new, left_padding:left_padding + w_new]
+        assert (output_normalization < 1.0).sum() == 0
+        segmentation = segmentation / output_normalization[:, :, np.newaxis]
+
     if output_type == 'labels':
-        x = np.argmax(x, axis=2)
+        segmentation = np.argmax(output_segmentation, axis=2)
 
-    return x, image
+    return segmentation, image
 
 
-def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox=None, texts=None, offset=20, pred_bbox=None):
+def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox=None, texts=None, offset=20,
+                     pred_bbox=None, min_confidence=None):
 
     if isinstance(images, np.ndarray) and images.ndim == 2:
         # single grayscale image
@@ -200,9 +218,14 @@ def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox
         ax_pred = None
         if prediction is not None or heatmap is not None:
             if prediction is None:
-                prediction = heatmap.argmax(axis=-1)
+                if min_confidence is None:
+                    prediction = heatmap.argmax(axis=-1)
+                else:
+                    prediction = np.zeros(heatmap.shape[:2])
+                    for i_label in range(1, heatmap.shape[2]):
+                        prediction[heatmap[:, :, i_label] > min_confidence] = i_label
             k = k + 1
-            ax[k].imshow(prediction, vmin=0,  vmax=2)
+            ax[k].imshow(prediction, vmin=0,  vmax=heatmap.shape[2]-1)
             ax[k].set_title('Segmentation')
             ax_pred = ax[k]
 

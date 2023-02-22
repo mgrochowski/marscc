@@ -123,9 +123,19 @@ def save_samples(save_dir, images, labels):
         k = k + 1
 
 
-def split_image(input_image, output_width=450, output_height=450, overlap=100, padding=None):
+def split_image(input_image, output_width=450, output_height=450, overlap=0.5, padding=None):
 
-    if padding is None: padding = overlap
+    assert overlap >= 0.0
+    if overlap < 1.0:
+        overlap = int(min(output_width, output_height) * overlap)
+
+    if padding is None or padding == 0:
+        left_padding = 0
+        right_padding = max(output_width, output_height) - overlap
+    else:
+        left_padding = padding
+        right_padding = padding
+
     patches = []
 
     x_start, y_start = 0, 0
@@ -134,18 +144,18 @@ def split_image(input_image, output_width=450, output_height=450, overlap=100, p
 
     image = input_image
 
-    # padding: add 0 at right and bottom edges of image
-    if padding > 0:
-        if image.ndim == 2:
-            image = np.pad(input_image, [[0, padding], [0, padding]])
-        elif image.ndim == 3:
-            image = np.pad(input_image, [[0, padding], [0, padding], [0, 0]])
+    # padding: always add right_padding at right and bottom edges of image
+    # if padding arg. is provided then also add padding at left and top egge
+    if image.ndim == 2:
+        image = np.pad(input_image, [[left_padding, right_padding], [left_padding, right_padding]])
+    elif image.ndim == 3:
+        image = np.pad(input_image, [[left_padding, right_padding], [left_padding, right_padding], [0, 0]])
 
-    while y_start + output_height <= height + padding:
+    while y_start + output_height <= height + left_padding + right_padding:
 
         y_end = y_start + output_height
 
-        while x_start + output_width <= width + padding:
+        while x_start + output_width <= width + left_padding + right_padding:
 
             x_end = x_start + output_width
 
