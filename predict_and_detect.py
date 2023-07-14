@@ -223,7 +223,7 @@ def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox
                 else:
                     prediction = np.zeros(heatmap.shape[:2])
                     for i_label in range(1, heatmap.shape[2]):
-                        prediction[heatmap[:, :, i_label] > min_confidence] = i_label
+                        prediction[heatmap[:, :, i_label] >= min_confidence] = i_label
             k = k + 1
             ax[k].imshow(prediction, vmin=0,  vmax=heatmap.shape[2]-1)
             ax[k].set_title('Segmentation')

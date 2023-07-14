@@ -14,14 +14,13 @@ import skimage
 
 from skimage.color import gray2rgb
 from skimage.measure import regionprops
-from skimage.morphology import closing, square
+from skimage.morphology import closing, square, disk, binary_closing
 from skimage.segmentation import clear_border
 from skimage.measure import label as label_region
 
 from utils.image import image_to_labelmap, label_map, recognize_rgb_map
 
 label_names = ('cone', 'crater')
-
 
 @click.command()
 @click.option('--input_file', default=None, help='Input file with annotations (labels)')
@@ -77,7 +76,7 @@ def run(input_file, input_image=None, min_area=10, min_solidity=0.5, output_dir=
 
 
 def detect_cones_and_craters(label_image=None, heatmap=None, min_area=0, min_solidity=0.0, label_names=label_names,
-                             min_confidence=None):
+                             min_confidence=None, threshold_fn=None, closing_diameter=10, cl_border=True):
     # if min_significance == None then
     #      label_image = heatmap.argmax(axis=2)
     # else
@@ -96,12 +95,14 @@ def detect_cones_and_craters(label_image=None, heatmap=None, min_area=0, min_sol
     # detect
     for label in label_names:
         label_id = label_map[label]
+        if min_confidence is None and threshold_fn is not None:
+            min_confidence = threshold_fn(heatmap[: ,:, label_id])
         if min_confidence is None:
             label_image_input = label_image
         else:
             label_image_input = np.zeros(heatmap[:, :, label_id].shape)
             label_image_input[heatmap[:, :, label_id] >= min_confidence] = label_id
-        label_image_det = detection(label_image_input, label=label_id)
+        label_image_det = detection(label_image_input, label=label_id, closing_diameter=closing_diameter, cl_border=cl_border)
         res = regionprops(label_image_det, intensity_image=heatmap[:, :, label_id])
 
         detected[label] = res
@@ -230,14 +231,17 @@ def detections_to_datatable(detections, sort_by='area'):
     return dt.sort_values(by=[sort_by], ascending=False)
 
 
-def detection(x, label=1):
+def detection(x, label=1, closing_diameter=10, cl_border=True):
     label_img = (x == label).astype(np.int32)
 
     # apply threshold
-    bw = closing(label_img, square(3))
+    bw = binary_closing(label_img, disk(closing_diameter))
 
     # remove artifacts connected to image border
-    cleared = clear_border(bw)
+    if cl_border:
+        cleared = clear_border(bw)
+    else:
+        cleared = bw
 
     # label image regions
     label_image = label_region(cleared, background=0)
