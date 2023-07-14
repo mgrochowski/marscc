@@ -3,33 +3,36 @@
 from __future__ import print_function, division, absolute_import, unicode_literals
 
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 import click
 import cv2
 import numpy as np
+from matplotlib import patches
 
 from detect import detect_cones_and_craters, print_detections, draw_regions2
-from keras_segmentation.data_utils.data_loader import class_colors, get_image_array
-from keras_segmentation.predict import predict_multiple, model_from_checkpoint_path, predict
+from keras_segmentation.data_utils.data_loader import get_image_array
+from keras_segmentation.predict import model_from_checkpoint_path
 from utils.image import labelmap_to_image, split_image, grayscale_to_rgb
 from utils.download import download_model
 from keras_segmentation.models.config import IMAGE_ORDERING
+
 
 @click.command()
 @click.option('--input_file', default=None, help='Input image with Mars surface')
 @click.option('--input_width', default=None, help='Model input width [in ptx]', type=int)
 @click.option('--input_height', default=None, help='Model input height [in ptx]', type=int)
-@click.option('--overlap', default=0, help='Patch overlaping size (in pixels or ratio)')
+@click.option('--overlap', default=0, help='Patch overlapping size (in pixels or ratio)')
 @click.option('--resize_ratio', default=1.0, help='Scaling ratio')
 @click.option('--checkpoint_path', default=None, help='Path to model checkpoint')
 @click.option('--output_dir', default='detection_output', help='Output directory')
-@click.option('--norm', default='sub_and_divide', help='Imega normalization: sub_and_divide [-1, 1], sub_mean  [103.939, 116.779, 123.68], divide  [0,1]]')
+@click.option('--norm', default='sub_and_divide', help='Image normalization: sub_and_divide [-1, 1], sub_mean  [103.939, 116.779, 123.68], divide  [0,1]]')
 def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
         output_dir='detection_output', checkpoint_path=None, norm='sub_and_divide'):
 
     heatmap, image = predict_large_image(input_file=input_file, input_width=input_width, input_height=input_height,
-                                       overlap=overlap, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
-                                              output_type='heatmap', imgNorm=norm)
+                                         overlap=overlap, resize_ratio=resize_ratio, checkpoint_path=checkpoint_path,
+                                         output_type='heatmap', imgNorm=norm)
 
     output_image = np.argmax(heatmap, axis=2)
 
@@ -42,7 +45,7 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
     file_path = str(o_dir / i_name) + '_segmentation.png'
     cv2.imwrite(file_path, output_image_rgb)
 
-    results = detect_cones_and_craters(labels=output_image, min_area=10, min_perimeter=5,
+    results = detect_cones_and_craters(label_image=output_image, min_area=10,
                                        min_solidity=0.5)
 
     log = print_detections(results)
@@ -60,9 +63,10 @@ def run(input_file, input_width=None, input_height=None, overlap=0, resize_ratio
 
 
 def predict_large_image(input_file, input_width=None, input_height=None, overlap=0, resize_ratio=0.1,
-                        checkpoint_path=None, model=None, output_type='labels', imgNorm="sub_and_divide"):
+                        checkpoint_path=None, model=None, output_type='labels', imgNorm="sub_and_divide",
+                        batch_size=32):
     # output_type: 'labels' - return segmentation as labels, shape [width, height]
-    #              'heatmap' - return segmentation as heatmap, shape [width, heaight, n_classes]
+    #              'heatmap' - return segmentation as heatmap, shape [width, height, n_classes]
 
     if model is None:
         if checkpoint_path is None:
@@ -94,33 +98,52 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
     else:
         image_to_split = image
 
-    padding = max(input_height, input_width) - overlap
-    patches = split_image(image_to_split, output_width=input_width, output_height=input_height, overlap=overlap,
-                          padding=padding)
+    assert max(input_height, input_width) > overlap
+    left_padding = max(input_height, input_width) // 2
+    image_patches = split_image(image_to_split, output_width=input_width, output_height=input_height, overlap=overlap,
+                                padding=left_padding)
+
 
     input_images = []
-    for i, patch in enumerate(patches):
+    for i, patch in enumerate(image_patches):
         patch_x, patch_info = patch
         input_images.append(patch_x)
 
     # normalize data
-    input_images = np.array([ get_image_array(inp, input_width, input_height, ordering=IMAGE_ORDERING, imgNorm=imgNorm) for inp in input_images])
+    input_images = np.array([get_image_array(inp, input_width, input_height, ordering=IMAGE_ORDERING, imgNorm=imgNorm) for inp in input_images])
+
+    n_images = input_images.shape[0]
+    n_steps = n_images // batch_size
+    if n_images % batch_size != 0:
+        n_steps = n_images // batch_size + 1
 
     # segmentation
-    net_predictions = model.predict(input_images)
+    predictions = []
+    start_ind = 0
+    for i in range(n_steps):
+        p = model.predict(input_images[start_ind:start_ind+batch_size])
+        predictions.append(p)
+        start_ind = start_ind + batch_size
+
+    net_predictions = np.concatenate(predictions, axis=0)
 
     output_height = model.output_height
     output_width = model.output_width
-    n_img = input_images.shape[0]
     n_classes = net_predictions.shape[2]
     # predictions = np.argmax(net_predictions, axis=2).reshape((n_img, output_height, output_width))
-    segmentation_heatmap = net_predictions.reshape((n_img, output_height, output_width, n_classes))
+    segmentation_heatmap = net_predictions.reshape((n_images, output_height, output_width, n_classes))
 
     # join
     # output_prediction = np.zeros((h_new + padding, w_new + padding))
-    output_segmentation = np.zeros((h_new + padding, w_new + padding, n_classes))
+    right_padding = max(input_height, input_width)
+    output_segmentation = np.zeros((left_padding + h_new + right_padding, left_padding + w_new + right_padding, n_classes))
 
-    for i, patch in enumerate(patches):
+    output_normalization = 1.0
+    if overlap > 0:
+        output_normalization = np.zeros(output_segmentation.shape[:2])
+
+    # merge predictions into single big image
+    for i, patch in enumerate(image_patches):
         _, patch_info = patch
         sx, sy, ex, ey = patch_info
 
@@ -131,45 +154,112 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
             heatmap = cv2.resize(heatmap, (ey - sy, ex - sx), interpolation=cv2.INTER_NEAREST)
 
         # output_prediction[sy:ey, sx:ex] = prediction
-        output_segmentation[sy:ey, sx:ex] = heatmap
+        if overlap > 0:
+            output_segmentation[sy:ey, sx:ex] = output_segmentation[sy:ey, sx:ex] + heatmap
+            output_normalization[sy:ey, sx:ex] = output_normalization[sy:ey, sx:ex] + 1.0
+        else:
+            output_segmentation[sy:ey, sx:ex] = heatmap
 
-    x = output_segmentation[:h_new, :w_new]
+    segmentation = output_segmentation[left_padding:left_padding + h_new, left_padding:left_padding + w_new]
+    if overlap > 0:
+        output_normalization = output_normalization[left_padding:left_padding + h_new, left_padding:left_padding + w_new]
+        assert (output_normalization < 1.0).sum() == 0
+        segmentation = segmentation / output_normalization[:, :, np.newaxis]
+
     if output_type == 'labels':
-        x = np.argmax(x, axis=2)
+        segmentation = np.argmax(output_segmentation, axis=2)
 
-    return x, image
+    return segmentation, image
 
-import matplotlib.pyplot as plt
 
-def plot_predictions(images, targets, predictions):
+def plot_predictions(images, targets=None, predictions=None, heatmaps=None, bbox=None, texts=None, offset=20,
+                     pred_bbox=None, min_confidence=None):
 
     if isinstance(images, np.ndarray) and images.ndim == 2:
         # single grayscale image
-        images, targets, predictions = [images], [targets], [predictions]
+        images, targets, predictions, heatmaps, bbox, texts, pred_bbox = [images], [targets], [predictions], [heatmaps], [bbox], [texts], [pred_bbox]
 
-    fig, axs = plt.subplots(len(images), 5, figsize=(25, 5 * len(images)))
+    n_rows = len(images)
 
-    if len(images) == 1:
-        axs = [ axs ]
+    n_cols = 5
+    if targets is None or targets[0] is None:
+        n_cols = n_cols - 1
+        targets = [None] * n_rows
+    if heatmaps is None or heatmaps[0] is None:
+        n_cols = n_cols - 2
+        heatmaps = [None] * n_rows
+    if bbox is None or bbox[0] is None:
+        bbox = [None] * n_rows
+    if predictions is None or predictions[0] is None:
+        predictions = [None] * n_rows
+        if heatmaps[0] is None:
+            n_cols = n_cols - 1
+    if texts is None or texts[0] is None:
+        texts = [None] * n_rows
+    if pred_bbox is None or pred_bbox[0] is None:
+        pred_bbox = [None] * n_rows
 
-    for ax, image, label, prediction in zip(axs, images, targets, predictions):
+    fig, axs = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 5 * n_rows))
+    if n_rows == 1:
+        axs = [axs]
 
-        ax[0].matshow(image, cmap='Greys')
-        ax[0].set_title('Input image')
+    for ax, image, target, prediction, heatmap, bb, text, pred_bb in zip(axs, images, targets, predictions, heatmaps, bbox, texts, pred_bbox):
 
-        ax[1].matshow(label, vmin=0,  vmax=2)
-        ax[1].set_title('Target')
+        k = 0
+        ax[k].imshow(image, cmap='gray')
+        ax[k].set_title('Input image')
+        ax_image = ax[k]
 
-        ax[2].matshow(prediction.argmax(axis=-1))
-        ax[2].set_title('Segmentation')
+        if target is not None:
+            k = k + 1
+            ax[k].imshow(target, vmin=0,  vmax=2)
+            ax[k].set_title('Target')
 
-        ax[3].matshow(prediction[:, :, 1], vmin=0.01, vmax=1.0, cmap='Reds')
-        ax[3].set_title('Cone prediction')
+        ax_pred = None
+        if prediction is not None or heatmap is not None:
+            if prediction is None:
+                if min_confidence is None:
+                    prediction = heatmap.argmax(axis=-1)
+                else:
+                    prediction = np.zeros(heatmap.shape[:2])
+                    for i_label in range(1, heatmap.shape[2]):
+                        prediction[heatmap[:, :, i_label] >= min_confidence] = i_label
+            k = k + 1
+            ax[k].imshow(prediction, vmin=0,  vmax=heatmap.shape[2]-1)
+            ax[k].set_title('Segmentation')
+            ax_pred = ax[k]
 
-        ax[4].matshow(prediction[:, :, 2], vmin=0.01, vmax=1.0, cmap='Reds')
-        ax[4].set_title('Crater prediction')
+        if heatmap is not None:
+            k = k + 1
+            ax[k].imshow(heatmap[:, :, 1], vmin=0.0, vmax=1.0, cmap='Reds')
+            ax[k].set_title('Cone prediction')
 
+            k = k + 1
+            ax[k].imshow(heatmap[:, :, 2], vmin=0.0, vmax=1.0, cmap='Reds')
+            ax[k].set_title('Crater prediction')
+
+        if bb is not None:
+            y1, x1, y2, x2 = bb
+
+            for i in range(n_cols):
+                ax[i].set_xlim((x1-offset, x2+offset))
+                ax[i].set_ylim((y2+offset, y1-offset))
+
+            rect = patches.Rectangle(xy=(x1, y1), width=x2-x1, height=y2-y1, linewidth=1, edgecolor='r', facecolor='none')
+            ax_image.add_patch(rect)
+
+        if pred_bb is not None and not np.isnan(pred_bb).any() and ax_pred is not None:
+            y1, x1, y2, x2 = pred_bb
+            rect = patches.Rectangle(xy=(x1, y1), width=x2-x1, height=y2-y1, linewidth=1, edgecolor='r', facecolor='none')
+            ax_pred.add_patch(rect)
+
+        if text is not None:
+            yy1, yy2 = ax[0].get_ylim()
+            xx1, xx2 = ax[0].get_xlim()
+            ax[0].text(xx1, yy2-np.abs(yy2-yy1) * 0.1, text, fontsize=12)
+            plt.subplots_adjust(hspace=0.4)
     return fig
+
 
 def predict_and_plot(input_file, target_file, resize_ratio=1.0, checkpoint_path=None, model=None, imgNorm="sub_and_divide"):
 
@@ -177,8 +267,9 @@ def predict_and_plot(input_file, target_file, resize_ratio=1.0, checkpoint_path=
                                          model=model, output_type='heatmap', imgNorm=imgNorm)
     target_img = cv2.imread(target_file, 1)
     target_img = cv2.resize(target_img, (image.shape[0], image.shape[1]), interpolation=cv2.INTER_NEAREST)
-    fig = plot_predictions(image, target_img, heatmap)
+    fig = plot_predictions(image, targets=target_img, heatmaps=heatmap)
     return fig
+
 
 if __name__ == '__main__':
 

@@ -9,24 +9,26 @@ import cv2
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
+import skimage
 
 from skimage.color import gray2rgb
 from skimage.measure import regionprops
-from skimage.morphology import closing, square
+from skimage.morphology import closing, square, disk, binary_closing
 from skimage.segmentation import clear_border
 from skimage.measure import label as label_region
 
 from utils.image import image_to_labelmap, label_map, recognize_rgb_map
 
+label_names = ('cone', 'crater')
 
 @click.command()
 @click.option('--input_file', default=None, help='Input file with annotations (labels)')
 @click.option('--input_image', default=None, help='Input image with Mars surface')
 @click.option('--min_area', default=10, help='Minimum object area [in ptx]')
-@click.option('--min_perimeter', default=5, help='Minimum object perimeter [in ptx]')
 @click.option('--min_solidity', default=0.5, help='Minimum object solidity')
 @click.option('--output_dir', default='detect_cones_output', help='Output directory')
-def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity=0.5, output_dir='detect_cones_output'):
+def run(input_file, input_image=None, min_area=10, min_solidity=0.5, output_dir='detect_cones_output'):
 
     image = cv2.imread(input_file)
     if image is None:
@@ -40,7 +42,7 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
     labels = image_to_labelmap(image, rgb_map=rgb_map)
     # plt.imshow(label)
 
-    detections = detect_cones_and_craters(labels, min_area=min_area, min_perimeter=min_perimeter, min_solidity=min_solidity)
+    detections = detect_cones_and_craters(labels, min_area=min_area, min_solidity=min_solidity)
     table = detections_to_datatable(detections)
     log = print_detections(table)
 
@@ -73,33 +75,59 @@ def run(input_file, input_image=None, min_area=10, min_perimeter=5, min_solidity
     print('Results saved in %s' % output_dir)
 
 
-def detect_cones_and_craters(labels, min_area=10, min_perimeter=5, min_solidity=0.5):
+def detect_cones_and_craters(label_image=None, heatmap=None, min_area=0, min_solidity=0.0, label_names=label_names,
+                             min_confidence=None, threshold_fn=None, closing_diameter=10, cl_border=True):
+    # if min_significance == None then
+    #      label_image = heatmap.argmax(axis=2)
+    # else
+    #     label_image = heatmap[:,:, label] >= min_significance  * label_id
 
-    label_names = ['cone', 'crater']
+    if label_image is None:
+        if heatmap is None:
+            raise Exception('Provide label_image or heatmap argument')
+        else:
+            label_image = heatmap.argmax(axis=2)
+    else:
+        if heatmap is None:
+            heatmap = np.ones((label_image.shape[0], label_image.shape[1], len(label_map)), dtype=np.float)
     detected = {}
 
     # detect
     for label in label_names:
-        label_image = detectoin(labels, label=label_map[label])
-        res = regionprops(label_image)
+        label_id = label_map[label]
+        if min_confidence is None and threshold_fn is not None:
+            min_confidence = threshold_fn(heatmap[: ,:, label_id])
+        if min_confidence is None:
+            label_image_input = label_image
+        else:
+            label_image_input = np.zeros(heatmap[:, :, label_id].shape)
+            label_image_input[heatmap[:, :, label_id] >= min_confidence] = label_id
+        label_image_det = detection(label_image_input, label=label_id, closing_diameter=closing_diameter, cl_border=cl_border)
+        res = regionprops(label_image_det, intensity_image=heatmap[:, :, label_id])
 
         detected[label] = res
-        print('%s detected %d objects' % (label, len(res)))
+        # print('%s detected %d objects' % (label, len(res)))
 
     # filter
-    for label in label_names:
+    if min_area > 0 or min_solidity > 0.0:
+        for label in label_names:
 
-        res = detected[label]
-        res_filtered = []
-        for region in res:
+            res = detected[label]
+            res_filtered = []
+            for region in res:
 
-            # take regions with large enough areas
-            if region.area >= min_area and region.perimeter >= min_perimeter and region.solidity >= min_solidity:
-                res_filtered.append(region)
-            else:
-                print('Removing region, area %d, perimeter %f, solidity %f' % (region.area, region.perimeter, region.solidity))
+                # take regions with large enough areas
+                if region.area >= min_area and region.solidity >= min_solidity:
+                    res_filtered.append(region)
+                else:
+                    reasons = []
+                    if region.area < min_area: reasons.append('area %.1f < %.1f' % (region.area, min_area))
+                    if region.solidity < min_solidity: reasons.append('solidity %.1f < %.1f' % (region.solidity, min_solidity))
 
-        detected[label] = res_filtered
+                    print('Ignoring region %d [%s] at %.0f,%.0f, approx. diameter %.1f, %s ' %
+                          (region.label, label, region.centroid[0], region.centroid[1], 2.0 * np.sqrt(region.area / np.pi), ", ".join(reasons)))
+
+            detected[label] = res_filtered
 
     return detected
 
@@ -148,6 +176,29 @@ def draw_regions2(image, detected, color=None, thickness=3):
     return img_reg
 
 
+def draw_regions3(image, detection_table, color=None, thickness=3):
+
+    if color is None:
+        color = [[255, 0, 0], [0, 0, 255], [0, 255, 0]]
+
+    img_reg = image.copy()
+    if len(img_reg.shape) == 2:
+        img_reg = gray2rgb(img_reg)
+
+    # alpha = 0.5
+
+    for label, bbox in zip(detection_table.label, detection_table.bbox):
+        # draw rectangle around segmented objects
+        minr, minc, maxr, maxc = bbox
+        # rr, cc = rectangle_perimeter(start=(minr, minc), end=(maxr, maxc), shape=img_reg.shape)
+        # set_color(img_reg, (rr, cc), color[i], alpha=alpha)
+        cv2.rectangle(img_reg, (minc, minr), (maxc, maxr), color=color[label_map[label]], thickness=thickness)
+
+    return img_reg
+
+
+
+
 def print_detections(detected):
 
     table = detected
@@ -155,48 +206,42 @@ def print_detections(detected):
         table = detections_to_datatable(detected, sort_by='area')
 
     if not table.empty:
-        text = table.groupby('label').agg({'area' : ['count', 'mean', 'std', 'min', 'max']}).to_string()
+        text = table.groupby('label').agg({'area': ['count', 'mean', 'std', 'min', 'max']}).to_string()
         text += '\n\n' + table.to_string()
     else:
         text = 'No objects detected'
 
-    # text = ''
-    # # print (sorted by perimeter)
-    # for i, label in enumerate(detected):
-    #     res = detected[label]
-    #     text += '\n%s N=%d\n\n' % (label, len(res))
-    #     text += 'Region      area                   bbox          centroid        perimeter  solidity\n'
-    #
-    #     for region in sorted(res, key=lambda x: getattr(x, 'perimeter')):
-    #         text += '%5d  %9d  %25s  %8.1f %8.1f  %8.1f  %5.3f\n' % (
-    #             region.label, region.area, str(region.bbox), region.centroid[0], region.centroid[1], region.perimeter,
-    #             region.solidity)
     print(text)
     return text
 
 
 def detections_to_datatable(detections, sort_by='area'):
 
-    tables = []
+    dt = pd.DataFrame(columns=['label', 'area', 'bbox', 'centroid', 'solidity', 'confidence', 'feret_diameter_max',
+                               'equivalent_diameter'])
+    i = 0
     for label in detections:
-        dt = pd.DataFrame(columns=['label', 'id', 'area', 'bbox', 'centroid', 'perimeter', 'solidity'])
-        for i, region in enumerate(detections[label]):
-            dt.loc[i] = [label, int(region.label), float(region.area), str(region.bbox), str(region.centroid), float(region.perimeter),
-                float(region.solidity)]
-        tables.append(dt)
+        for region in detections[label]:
+            dt.loc[i] = [label, float(region.area), np.array(region.bbox), np.array(region.centroid),
+                         float(region.solidity), float(region.max_intensity), float(region.feret_diameter_max),
+                         float(region.equivalent_diameter)]
+            i = i + 1
 
-    result = pd.concat(tables, axis=0)
-    return result.sort_values(by=[sort_by], ascending=False)
+    # dt['diameter'] = 2.0 * np.sqrt(dt['area'] / np.pi)
+    return dt.sort_values(by=[sort_by], ascending=False)
 
 
-def detectoin(x, label=1):
+def detection(x, label=1, closing_diameter=10, cl_border=True):
     label_img = (x == label).astype(np.int32)
 
     # apply threshold
-    bw = closing(label_img, square(3))
+    bw = binary_closing(label_img, disk(closing_diameter))
 
     # remove artifacts connected to image border
-    cleared = clear_border(bw)
+    if cl_border:
+        cleared = clear_border(bw)
+    else:
+        cleared = bw
 
     # label image regions
     label_image = label_region(cleared, background=0)
@@ -206,25 +251,24 @@ def detectoin(x, label=1):
 def class_report(cm, target_names=None):
 
     print("Confusion matrix")
-    print("true \ predicted")
+    print("true \\ predicted")
 
-    print(*[ ("%10s  " % target_names[i]) + str(row)[1:-1] for i, row in enumerate(cm)], sep='\n')
+    print(*[("%10s  " % target_names[i]) + str(row)[1:-1] for i, row in enumerate(cm)], sep='\n')
 
     print("\n     label    precision  recall  f1-score   support")
     for i in range(cm.shape[0]):
-        n = cm[i,:].sum()
+        n = cm[i, :].sum()
         if n > 0:
-            rec = cm[i,i] / n
+            rec = cm[i, i] / n
         else:
             rec = 0.0
-        prec = cm[i,i] / cm[:,i].sum()
+        prec = cm[i, i] / cm[:, i].sum()
         if prec + rec > 0:
             f1 = 2 * (prec * rec) / (prec + rec)
         else:
             f1 = 0.0
-        print("%10s %10.2f %10.2f %10.2f %3d" % (target_names[i], prec, rec, f1, n ))
+        print("%10s %10.2f %10.2f %10.2f %3d" % (target_names[i], prec, rec, f1, n))
 
-import numpy as np
 
 def iou_bbox(bb1, bb2):
     """
@@ -232,8 +276,8 @@ def iou_bbox(bb1, bb2):
 
     Parameters
     ----------
-    bb1 : coords [x1, y1, x2, y2]
-    bb2 : coords [x1, y1, x2, y2]
+    bb1 : cords [x1, y1, x2, y2]
+    bb2 : cords [x1, y1, x2, y2]
 
     Returns
     -------
@@ -264,10 +308,10 @@ def iou_bbox(bb1, bb2):
     return iou
 
 
-def detection_report(true_regions, predicted_regions, iou_treshold=0.5):
+def detection_report(true_regions, predicted_regions, iou_threshold=0.5):
 
     label_names = []
-    label_idx = { }
+    label_idx = {}
 
     predicted_reg_list = []
     target_reg_list = []
@@ -285,39 +329,39 @@ def detection_report(true_regions, predicted_regions, iou_treshold=0.5):
             target_reg_list.append((r, label))
 
     bcg_idx = len(label_names)   # background index
-    label_names.append('backgroubd')
+    label_names.append('background')
 
-    # count mached and conf-mat
-    mached_target = np.zeros((len(target_reg_list, )))
-    mached_pred = np.zeros((len(predicted_reg_list, )))
+    # count matched and conf-mat
+    matched_target = np.zeros((len(target_reg_list, )))
+    matched_pred = np.zeros((len(predicted_reg_list, )))
 
     conff = np.zeros((len(label_names), len(label_names)), dtype=np.int)
 
-    summary = { 'errors': [], 'missing': [], 'added': [], 'miss_iou' : [] , 'confusion_matrix': None }
+    summary = {'errors': [], 'missing': [], 'added': [], 'miss_iou': [], 'confusion_matrix': None}
     # y_true, y_pred  = [], []
     for i, tr in enumerate(target_reg_list):
         for j, sr in enumerate(predicted_reg_list):
-            # in_ptx = interesction_points(tr[0].coords, sr[0].coords, treshold=len(tr[0].coords))
-            # ptx_iou = float(len(in_ptx)) / (len(tr[0].coords) + len(sr[0].coords) - len(in_ptx))
+            # in_ptx = intersection_points(tr[0].cords, sr[0].cords, threshold=len(tr[0].cords))
+            # ptx_iou = float(len(in_ptx)) / (len(tr[0].cords) + len(sr[0].cords) - len(in_ptx))
             iou = iou_bbox(tr[0].bbox, sr[0].bbox)
-            if iou > iou_treshold:
-                mached_target[i] = mached_target[i] + 1
-                mached_pred[j] = mached_pred[j] + 1
+            if iou > iou_threshold:
+                matched_target[i] = matched_target[i] + 1
+                matched_pred[j] = matched_pred[j] + 1
                 # print(i, j, len(in_ptx), tr[1], sr[1])
                 conff[label_idx[tr[1]], label_idx[sr[1]]] = conff[label_idx[tr[1]], label_idx[sr[1]]] + 1
                 if tr[1] != sr[1]:
                     summary['errors'].append((tr, sr))
-            if iou > 0 and iou <= iou_treshold:
+            if iou > 0 and iou <= iou_threshold:
                 summary['miss_iou'].append((tr, sr, iou))
 
     # not detected target ROIs, mark as background predictions
-    for tr, mt in zip(target_reg_list, mached_target):
+    for tr, mt in zip(target_reg_list, matched_target):
         if mt == 0:
             conff[label_idx[tr[1]], bcg_idx] = conff[label_idx[tr[1]], bcg_idx] + 1
             summary['missing'].append(tr)
 
     # prediction of regions not matched to target ROIs
-    for pr, mp in zip(predicted_reg_list, mached_pred):
+    for pr, mp in zip(predicted_reg_list, matched_pred):
         if mp == 0:
             conff[bcg_idx, label_idx[pr[1]]] = conff[bcg_idx, label_idx[pr[1]]] + 1
             summary['added'].append(pr)
@@ -328,17 +372,155 @@ def detection_report(true_regions, predicted_regions, iou_treshold=0.5):
     return summary
 
 
-def interesction_points(x, y, treshold=1):
+def intersection_points(x, y, threshold=1):
 
     points = []
 
     for ex in x:
         if np.any(np.all(ex == y, axis=1)):
             points.append(ex)
-        if len(points) >= treshold: break
+        if len(points) >= threshold:
+            break
 
     return points
 
+
+def match_detections(true_regions, predicted_regions, iou_threshold=0.0):
+
+    if 'org_centroid' in true_regions.columns and 'org_centroid' in predicted_regions.columns:
+        input_columns = ['label', 'bbox', 'org_centroid', 'confidence', 'file_name', 'diameter_km']
+    else:
+        input_columns = ['label', 'bbox', 'centroid', 'confidence', 'file_name', 'diameter_km']
+    n_columns = len(input_columns)
+    t_regions = true_regions[input_columns]
+    p_regions = predicted_regions[input_columns]
+    columns = ['pred_' + c for c in input_columns] + ['pred_id'] + ['true_' + c for c in input_columns] + ['true_id', 'iou', 'message']
+    matched = pd.DataFrame(columns=columns)
+
+    matched_target = np.zeros((len(t_regions, )), dtype=np.int32)
+    matched_pred = np.zeros((len(p_regions, )),  dtype=np.int32)
+
+    missing_object = ['background'] + [np.NAN] * n_columns
+
+    k = 0
+    for true_id in t_regions.index:
+        bbt = t_regions.loc[true_id].bbox
+
+        # find region with best match
+        for pred_id in p_regions.index:
+            bbp = p_regions.loc[pred_id].bbox
+            iou = iou_bbox(bbt, bbp)
+            if iou > 0.0:
+                matched_target[true_id] = matched_target[true_id] + 1
+                matched_pred[pred_id] = matched_pred[pred_id] + 1
+                msg = 'Correct: %s, ' % t_regions.loc[true_id].label if t_regions.loc[true_id].label == p_regions.loc[pred_id].label else 'Error, '
+                matched.loc[k] = p_regions.loc[pred_id].to_list() + [pred_id] + t_regions.loc[true_id].to_list() + [true_id, iou, msg]
+                k = k + 1
+
+    # filter to small iou
+    if iou_threshold > 0.0:
+        too_small = matched['iou'] < iou_threshold
+        true_ids = matched[too_small].true_id
+        matched.loc[too_small, 'true_label'] = 'background'
+        matched.loc[too_small, 'message'] = matched.loc[too_small, 'message'] + 'IOU < %.3f, ' % iou_threshold
+        for i in true_ids.values:
+            matched_target[i] = matched_target[i] - 1
+        pred_ids = matched[too_small].pred_id
+        for i in pred_ids.values:
+            matched_pred[i] = matched_pred[i] - 1
+
+    assert (matched_target >= 0).all()
+    assert (matched_pred >= 0).all()
+
+    # leave only winning prediction (all selected have IOU above threshold)
+    for true_id in np.where(matched_target > 1)[0]:
+        sorted = matched[(matched.true_id == true_id) & (matched.true_label != 'background')].sort_values('iou', ascending=False)
+        winner_id = sorted['true_id'].iloc[0]
+        losers = sorted.iloc[1:]
+        matched.loc[losers.index, 'true_label'] = 'background'
+        matched.loc[losers.index, 'message'] =  matched.loc[losers.index, 'message'] + 'lose with true_id %d, ' % winner_id
+        matched_target[true_id] = matched_target[true_id] - len(losers)
+        for pred_id in losers.pred_id:
+            matched_pred[pred_id] = matched_pred[pred_id] - 1
+
+    # leave only winning prediction (all selected have IOU above threshold)
+    if (matched_pred > 1).any():
+        for pred_id in np.where(matched_pred > 1)[0]:
+            sorted = matched[(matched.pred_id == pred_id) & (matched.true_label != 'background')].sort_values('iou', ascending=False)
+            winner_id = sorted['pred_id'].iloc[0]
+            losers = sorted.iloc[1:]
+            if len(losers) > 0:
+                matched.loc[losers.index, 'true_label'] = 'background'
+                matched.loc[losers.index, 'message'] =  matched.loc[losers.index, 'message'] + 'lose with pred_id %d, ' % winner_id
+                matched_pred[pred_id] = matched_pred[pred_id] - len(losers)
+                for true_id in losers.true_id:
+                    matched_target[true_id] = matched_target[true_id] - 1
+
+            matched_pred[pred_id] = matched_pred[pred_id] - len(losers)
+
+    assert (matched_pred >= 0).all()
+    assert (matched_pred <= 1).all()
+
+    assert (matched_target >= 0).all()
+    assert (matched_target <= 1).all()
+
+    # add missing detections
+    for i in np.where(matched_target == 0)[0]:
+        matched.loc[k] = missing_object + t_regions.loc[i].to_list() + [i, np.NaN, 'Missing detection, ']
+        # print(t_regions.loc[i], i, matched_target[i])
+        k = k + 1
+
+    for j in np.where(matched_pred == 0)[0]:
+        matched.loc[k] = p_regions.loc[j].to_list() + [j] + missing_object + [np.NaN,  'False detection, ']
+        k = k + 1
+
+    assert len(matched[matched.true_label != 'background'].true_id.unique()) == len(matched_target)
+    assert len(matched[matched.pred_label != 'background'].pred_id.unique()) == len(matched_pred)
+
+    return matched
+
+
+def filter_matched_detections(matched_dt, min_diameter_km=0):
+
+    if isinstance(min_diameter_km, dict):
+        min_dia = min_diameter_km
+    else:
+        min_dia = {label: min_diameter_km for label in label_names}
+
+    result = matched_dt.copy()
+
+    # filter small objects
+    for label in min_dia:
+        too_small = (result['pred_diameter_km'] < min_dia[label]) & (result['pred_label'] == label)
+        result.loc[too_small, 'pred_label'] = 'background'
+        result.loc[too_small, 'message'] = result.loc[too_small, 'message'] + 'Predicted %s to small, ' % label
+
+        too_small = (result['true_diameter_km'] < min_dia[label]) & (result['true_label'] == label)
+        result.loc[too_small, 'true_label'] = 'background'
+        result.loc[too_small, 'message'] = result.loc[too_small, 'message'] + 'Target %s to small, ' % label
+
+    return result
+
+
+def merge_heatmaps(heatmaps, method='max', output_shape=None):
+
+    if output_shape is None:
+        output_shape = heatmaps[0].shape[:2]
+    n_channels = heatmaps[0].shape[2]
+
+    o_heatmap = np.zeros((output_shape[0], output_shape[1], n_channels), dtype=np.float64)
+
+    for heatmap in heatmaps:
+        for i in range(n_channels):
+            scaled_heatmap = skimage.transform.resize(heatmap[:, :, i], output_shape=output_shape)
+            if method == 'mean':
+                o_heatmap[:, :, i] = o_heatmap[:, :, i]/float(len(heatmaps)) + scaled_heatmap
+            elif method == 'max':
+                np.maximum(o_heatmap[:, :, i], scaled_heatmap, out=o_heatmap[:, :, i])
+            elif method == 'sum':
+                o_heatmap[:, :, i] = o_heatmap[:, :, i] + scaled_heatmap
+
+    return o_heatmap
 
 if __name__ == '__main__':
 

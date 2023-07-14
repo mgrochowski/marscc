@@ -9,12 +9,13 @@ from skimage.color import label2rgb
 
 from utils.image import image_to_labelmap, split_image, recognize_rgb_map
 
+
 @click.command()
 @click.option('--input_file', default=None, help='Input file')
 @click.option('--mask_file', default=None, help='Mask image')
 @click.option('--output_width', default=450, help='Width of output patch [in ptx]')
 @click.option('--output_height', default=450, help='Height of output patch [in ptx]')
-@click.option('--overlap', default=100, help='Patch overlaping size (in pixels or ratio)')
+@click.option('--overlap', default=100, help='Patch overlapping size (in pixels or ratio)')
 @click.option('--output_dir', default='output_dir', help='Output directory')
 @click.option('--resize_ratio', default=1.0, help='Scaling ratio')
 @click.option('--debug', default=False, is_flag=True, help='Create debug pictures')
@@ -24,8 +25,9 @@ def run(input_file, mask_file, output_width=450, output_height=450, overlap=100,
     generate(input_file=input_file, mask_file=mask_file, output_width=output_width, output_height=output_height,
              overlap=overlap, resize_ratio=resize_ratio, output_dir=output_dir, debug=debug)
 
+
 def generate(input_file, mask_file, output_width=450, output_height=450, overlap=100, resize_ratio=0.1,
-        output_dir='output_dir', debug=False):
+             output_dir='output_dir', debug=False):
     image = cv2.imread(input_file, cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise Exception('Cant open file %s' % input_file)

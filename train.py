@@ -49,7 +49,7 @@ print(physical_devices)
 # model = segnet.vgg_segnet(n_classes=3, input_height=480, input_width=480, channels=1 )
 # model = segnet.resnet50_segnet(n_classes=3, input_height=480, input_width=480, channels=1 )
 
-# training configuraion
+# training configuration
 configurations = {
    "unet_mini":        dict(n_classes=3, input_height=480, input_width=480, channels=1 ),
    "unet":            dict(n_classes=3, input_height=480, input_width=480, channels=1 ),

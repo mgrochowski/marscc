@@ -2,6 +2,7 @@ from pathlib import Path
 from urllib import request
 from urllib.parse import urlparse
 import urllib, zipfile
+from tqdm import tqdm
 
 MARS_IMG_URL='https:///www.fizyka.umk.pl/~grochu/mars/mars_images_scale_1_500K-2022-02-16.zip'
 MARS_TRAIN_URL='https:///www.fizyka.umk.pl/~grochu/mars/mars_data_20220216.zip'
@@ -37,7 +38,6 @@ MODELS = {
 
 DEFAULT_MODEL='vgg_unet2'
 
-from tqdm import tqdm
 
 class DownloadProgressBar(tqdm):
     def update_to(self, b=1, bsize=1, tsize=None):
@@ -95,6 +95,7 @@ def download_model(target_dir=MODELS_DIR, name=DEFAULT_MODEL):
 
     checkpoint_path = str( model_dir / Path(MODELS[name]['name'] ))
     return checkpoint_path
+
 
 def download_original_images(target_dir=DATA_DIR):
 
