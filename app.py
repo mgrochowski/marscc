@@ -1,11 +1,21 @@
 import ipywidgets as widgets
 import math
 import pandas as pd
-from IPython.core.display import display
+from IPython.core.display import display, display_markdown
 from utils.download import download_model
+from predict_and_detect import predict_large_image, plot_predictions
+from detect import detect_cones_and_craters, draw_regions3, match_detections, filter_matched_detections
+from detect import detections_to_datatable, class_report, merge_heatmaps
+from utils.image import image_to_labelmap, recognize_rgb_map, label_map
+from keras_segmentation.predict import model_from_checkpoint_path
+import matplotlib.pyplot as plt
+from pathlib import Path
+from datetime import datetime
+
 
 checkpoint_path = None
 model_name = 'pspnet_50'
+model_name = 'unet'
 
 input_files = [
     'data/test/testing1.png',
@@ -140,3 +150,83 @@ class App():
         print('Clear border           : %s' % str(self.cl_border))
         print('Input images           : %s' % self.input_files)
         print('Annotations            : %s' % self.mask_files)
+
+
+    def run_detection(self, plot_segmentation=False, plot_detections=False, print_detections=False, save=False):
+
+        current_time = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+        if self.model is None:
+            self.model = model_from_checkpoint_path(self.checkpoint_path, input_width=None, input_height=None)
+            print('Model input shape', self.model.input_shape)
+        _, input_width, input_height, channels = self.model.input_shape
+
+        save_dir = None
+
+        if save:
+            save_dir = 'results/detection_' + current_time
+            Path(save_dir).mkdir(exist_ok=True, parents=True)
+
+        self.results_summary = []
+        for i, input_file in enumerate(self.input_files):
+            file_name = os.path.basename(input_file)
+            output_file_path = str(Path(save_dir + '/' + file_name).with_suffix(''))
+
+            display_markdown('## File %d/%d: %s' % (i+1, len(self.input_files), file_name), raw=True)
+
+            heatmaps_to_merge = []
+            for scale in self.scales:
+                heatmap1, image1 = predict_large_image(input_file, resize_ratio=scale,
+                                                    model =self.model,
+                                                    output_type='heatmap',
+                                                    imgNorm=self.imgNorm, batch_size=self.batch_size,
+                                                    overlap=self.overlap)
+
+                heatmaps_to_merge.append(heatmap1)
+                if scale == self.scales[0]:
+                    image = image1
+
+            heatmap = merge_heatmaps(heatmaps_to_merge, method='max')
+
+            # plot segmentation results
+            if plot_segmentation:
+                fig = plot_predictions(image, heatmaps=heatmap, texts=input_file, min_confidence=self.min_confidence)
+                if save:
+                    plt.savefig(output_file_path + '_segmentation.png')
+
+            # object detection
+            pred_results = detect_cones_and_craters(heatmap=heatmap, min_confidence=self.min_confidence,
+                                                        threshold_fn=self.threshold_fn, closing_diameter=self.closing_diameter,
+                                                        cl_border=self.cl_border)
+
+            pred_dt = detections_to_datatable(pred_results)
+            pred_dt['file_name'] = file_name
+            pred_dt['diameter_km'] = pred_dt['equivalent_diameter'] * self.meters_per_px_scaled / 1e3
+            pred_dt['org_centroid'] = pred_dt['centroid'].apply(lambda x: (x/self.resize_ratio).astype(int))
+
+            if print_detections:
+                display_markdown('### [%s]: Detected objects' % (file_name), raw=True)
+                display(pred_dt.groupby('label').agg({'diameter_km' : ['count', 'mean', 'std', 'min', 'max']}))
+                # display(pred_dt)
+            if save:
+                pred_dt.to_csv(output_file_path + '_dt.csv')
+                with open(output_file_path + '_dt.txt', 'w') as text_file:
+                    text_file.write(pred_dt.to_string())
+
+            # show detection results
+            if plot_detections:
+                image_reg = draw_regions3(image, pred_dt, thickness=2)
+                plt.figure(figsize=(10, 10))
+                plt.imshow(image_reg)
+                plt.show()
+                if save:
+                     plt.savefig(output_file_path + '_detection.png')
+
+            results = {
+                'file_name':  file_name,
+                'file_path':  input_file,
+                'heatmap':  heatmap,
+                'image':    image,
+                'pred_dt':  pred_dt
+            }
+            self.results_summary.append(results)
