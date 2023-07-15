@@ -1,7 +1,7 @@
 import ipywidgets as widgets
 import math
 import pandas as pd
-from IPython.core.display import display, display_markdown
+from IPython.core.display import display, Javascript
 from utils.download import download_model
 from predict_and_detect import predict_large_image, plot_predictions
 from detect import detect_cones_and_craters, draw_regions3, match_detections, filter_matched_detections
@@ -11,7 +11,13 @@ from keras_segmentation.predict import model_from_checkpoint_path
 import matplotlib.pyplot as plt
 from pathlib import Path
 from datetime import datetime
-
+# from tqdm.auto import tqdm
+import cv2
+from time import sleep
+import os
+import uuid
+from sklearn.metrics import classification_report, confusion_matrix
+from IPython.utils.capture import capture_output
 
 checkpoint_path = None
 model_name = 'pspnet_50'
@@ -49,11 +55,6 @@ def create_output_tabs(tab_names):
     return tab
 
 
-from time import sleep
-from IPython.display import display, Javascript
-import os
-import uuid
-from datetime import datetime
 
 def get_notebook_name():
     display(Javascript('IPython.notebook.kernel.execute("NotebookName = " + "\'"+window.document.getElementById("notebook_name").innerHTML+"\'");'))
@@ -74,6 +75,20 @@ def export_to_html():
     os.system(cmd)
     print('Run: ', cmd)
     print('Notebook exported to: ', output_name)
+
+
+class Message:
+    def __init__(self, message) -> None:
+        self._message = message
+
+    def _repr_markdown_(self):
+        return self._message
+
+    def __repr__(self) -> str:
+        return self._message
+
+def display_message(message):
+    display(Message(message))
 
 
 
@@ -152,7 +167,7 @@ class App():
         print('Annotations            : %s' % self.mask_files)
 
 
-    def run_detection(self, plot_segmentation=False, plot_detections=False, print_detections=False, save=False):
+    def run_detection(self, plot_segmentation=False, plot_detections=False, print_detections=False, save=False, input_files = None, save_dir=None):
 
         current_time = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
@@ -161,18 +176,20 @@ class App():
             print('Model input shape', self.model.input_shape)
         _, input_width, input_height, channels = self.model.input_shape
 
-        save_dir = None
-
         if save:
-            save_dir = 'results/detection_' + current_time
+            if save_dir is None:
+                save_dir = 'results/detection_' + current_time
             Path(save_dir).mkdir(exist_ok=True, parents=True)
 
+        if input_files is None:
+            input_files = self.input_files
+
         self.results_summary = []
-        for i, input_file in enumerate(self.input_files):
+        for i, input_file in enumerate(input_files):
             file_name = os.path.basename(input_file)
             output_file_path = str(Path(save_dir + '/' + file_name).with_suffix(''))
 
-            display_markdown('## File %d/%d: %s' % (i+1, len(self.input_files), file_name), raw=True)
+            display_message('## File %d/%d: %s' % (i+1, len(input_files), file_name))
 
             heatmaps_to_merge = []
             for scale in self.scales:
@@ -192,12 +209,15 @@ class App():
             if plot_segmentation:
                 fig = plot_predictions(image, heatmaps=heatmap, texts=input_file, min_confidence=self.min_confidence)
                 if save:
-                    plt.savefig(output_file_path + '_segmentation.png')
+                    fig.savefig(output_file_path + '_segmentation.png')
+                fig.clear()
+                plt.close(fig)
 
             # object detection
             pred_results = detect_cones_and_craters(heatmap=heatmap, min_confidence=self.min_confidence,
                                                         threshold_fn=self.threshold_fn, closing_diameter=self.closing_diameter,
                                                         cl_border=self.cl_border)
+
 
             pred_dt = detections_to_datatable(pred_results)
             pred_dt['file_name'] = file_name
@@ -205,7 +225,7 @@ class App():
             pred_dt['org_centroid'] = pred_dt['centroid'].apply(lambda x: (x/self.resize_ratio).astype(int))
 
             if print_detections:
-                display_markdown('### [%s]: Detected objects' % (file_name), raw=True)
+                display_message('### [%s]: Detected objects' % (file_name))
                 display(pred_dt.groupby('label').agg({'diameter_km' : ['count', 'mean', 'std', 'min', 'max']}))
                 # display(pred_dt)
             if save:
@@ -216,11 +236,13 @@ class App():
             # show detection results
             if plot_detections:
                 image_reg = draw_regions3(image, pred_dt, thickness=2)
-                plt.figure(figsize=(10, 10))
+                fig = plt.figure(figsize=(10, 10))
                 plt.imshow(image_reg)
                 plt.show()
                 if save:
-                     plt.savefig(output_file_path + '_detection.png')
+                     fig.savefig(output_file_path + '_detection.png')
+                fig.clear()
+                plt.close(fig)
 
             results = {
                 'file_name':  file_name,
@@ -230,3 +252,159 @@ class App():
                 'pred_dt':  pred_dt
             }
             self.results_summary.append(results)
+
+
+    def run_evaluation(self, plot_segmentation=True, plot_detections=True, print_detections=True, save=False, input_files = None, mask_files=None, save_dir=None):
+        # run detection and evaluation
+
+        # show_columns = ['true_label', 'pred_label', 'iou', 'true_id', 'pred_id', 'pred_diameter_km', 'true_diameter_km', 'pred_centroid', 'pred_confidence', 'message']
+
+        current_time = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+        if save:
+            if save_dir is None:
+                save_dir = 'results/evaluation_' + current_time
+            Path(save_dir).mkdir(exist_ok=True, parents=True)
+            with capture_output() as c:
+                self.print_configuration()
+            with open(save_dir + '/configuration.txt', 'w') as text_file:
+                text_file.write(c.stdout)
+
+        if input_files is None:
+            input_files = self.input_files
+
+        if mask_files is None:
+            mask_files = self.mask_files
+
+        self.run_detection(plot_segmentation=False, plot_detections=False, save=save, save_dir=save_dir, print_detections=False, input_files=input_files)
+
+        i=0
+        for mask_file, results in zip(mask_files, self.results_summary):
+
+            mask_file_name = os.path.basename(mask_file)
+            results['mask_file_name'] = mask_file_name
+            file_name = results['file_name']
+
+            output_file_path = str(Path(save_dir + '/' + file_name).with_suffix(''))
+            output_mask_file_path = str(Path(save_dir + '/' + mask_file_name).with_suffix(''))
+
+            image = results['image']
+        #     prediction = results['prediction']
+            heatmap = results['heatmap']
+            pred_dt = results['pred_dt']
+
+            display_message('### File %d/%d: %s' % (i+1, len(self.results_summary), file_name))
+
+            mask_img = cv2.imread(mask_file, 1)
+            mask_img = cv2.resize(mask_img, (image.shape), interpolation=cv2.INTER_NEAREST)
+            rgb_map = recognize_rgb_map(mask_img)
+            mask_labels = image_to_labelmap(mask_img, rgb_map=rgb_map)
+
+            true_results = detect_cones_and_craters(label_image=mask_labels)
+            true_dt = detections_to_datatable(true_results)
+            true_dt['file_name'] = file_name
+            true_dt['diameter_km'] = true_dt['equivalent_diameter'] * self.meters_per_px_scaled / 1e3
+            true_dt['org_centroid'] = true_dt['centroid'].apply(lambda x: (x/self.resize_ratio).astype(int))
+
+            if print_detections:
+                display_message('#### [%s] Targets' % (mask_file_name))
+                display(true_dt.groupby('label').agg({'diameter_km' : ['count', 'mean', 'std', 'min', 'max']}))
+            #     display(true_dt)
+
+                display_message('#### [%s]: Detected objects' % (file_name))
+                display(pred_dt.groupby('label').agg({'diameter_km' : ['count', 'mean', 'std', 'min', 'max']}))
+            #     display(pred_dt)
+
+            if save:
+                true_dt.to_csv(output_mask_file_path + '_dt.csv')
+                with open(output_mask_file_path + '_dt.txt', 'w') as text_file:
+                    text_file.write(true_dt.to_string())
+
+            if plot_segmentation:
+                display_message('#### [%s] Targets vs. predictions' % (file_name))
+                fig = plot_predictions(image, heatmaps=heatmap, targets=mask_img, min_confidence=self.min_confidence)
+                plt.show()
+
+                if save:
+                    fig.savefig(output_file_path + '_segmentation.png')
+                fig.clear()
+                plt.close(fig)
+
+            if plot_detections:
+                fig, ax = plt.subplots(1, 2, figsize=(15,10))
+                image_reg = draw_regions3(image, true_dt, thickness=2)
+                ax[0].imshow(image_reg)
+                ax[0].set_title('Target')
+                image_reg = draw_regions3(image, pred_dt, thickness=2)
+                ax[1].imshow(image_reg)
+                ax[1].set_title('Prediction')
+                plt.show()
+
+                if save:
+                     fig.savefig(output_file_path + '_detection.png')
+                fig.clear()
+                plt.close(fig)
+
+
+        #     mdisplay('### [%s] Matched IOU > %f' % (file_name, iou_threshold), raw=True)
+            matched_dt = match_detections(true_dt, pred_dt, iou_threshold=self.iou_threshold)
+        #     display(matched_dt[show_columns])
+
+        #     mdisplay('### [%s] Matched and filtered' % (file_name), raw=True)
+        #     min_diameter={'cone': cone_min_diameter_px, 'crater': crater_min_diameter_px}
+            min_diameter_km = {'cone': self.cone_min_diameter_km, 'crater': self.crater_min_diameter_km}
+            filtered_dt = filter_matched_detections(matched_dt, min_diameter_km=min_diameter_km)
+        #     display(filtered_dt[show_columns])
+
+            true_labels_id = [label_map[label] for label in filtered_dt['true_label']]
+            pred_labels_id = [label_map[label] for label in filtered_dt['pred_label']]
+
+            conf_mat = confusion_matrix(true_labels_id, pred_labels_id, labels=range(len(label_map)))
+
+            display_message('#### [%s] Classification report' % (file_name))
+            cr_str = classification_report(true_labels_id, pred_labels_id, labels=range(len(label_map)), target_names=label_map.keys())
+            print(cr_str)
+
+            with capture_output() as c:
+                class_report(conf_mat[[1,2,0], :][:, [1,2,0]], ['cone', 'crater', 'background'])
+            print(c.stdout)
+
+            if save:
+                with open(output_file_path + '_class_report.txt', 'w') as text_file:
+                    text_file.write(cr_str)
+                with open(output_file_path + '_conf_mat.txt', 'w') as text_file:
+                    text_file.write(c.stdout)
+
+            filtered_dt['image_id'] = i
+            results['true_dt'] = true_dt
+            results['matched_dt'] = filtered_dt
+            results['conf_mat'] = conf_mat
+            results['mask_img'] = mask_img
+            i = i + 1
+
+        self.results_all_dt = pd.concat([r['matched_dt']  for r in self.results_summary])
+        self.results_all_dt.reset_index(drop=True, inplace=True)
+
+        true_labels_id = [label_map[label] for label in self.results_all_dt['true_label']]
+        pred_labels_id = [label_map[label] for label in self.results_all_dt['pred_label']]
+
+        self.conf_mat = confusion_matrix(true_labels_id, pred_labels_id, labels=range(len(label_map)))
+
+        display_message('### [%s] Classification report ALL' % (file_name))
+        cr_str = classification_report(true_labels_id, pred_labels_id, labels=range(len(label_map)), target_names=label_map.keys())
+        print(cr_str)
+
+        with capture_output() as c:
+            class_report(conf_mat[[1,2,0], :][:, [1,2,0]], ['cone', 'crater', 'background'])
+        print(c.stdout)
+
+        self.results_all_dt['TP'] = (self.results_all_dt.true_label != 'background') & (self.results_all_dt.pred_label ==  self.results_all_dt.true_label)
+
+        if save:
+            self.results_all_dt.to_csv(save_dir + '/results_all_dt.csv')
+            with open(save_dir + '/results_all_dt.txt', 'w') as text_file:
+                text_file.write(self.results_all_dt.to_string())
+            with open(save_dir + '/results_all_class_report.txt', 'w') as text_file:
+                text_file.write(cr_str)
+            with open(save_dir + '/results_all_conf_mat.txt', 'w') as text_file:
+                text_file.write(c.stdout)
