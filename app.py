@@ -16,8 +16,11 @@ import cv2
 from time import sleep
 import os
 import uuid
+from glob import glob
 from sklearn.metrics import classification_report, confusion_matrix
 from IPython.utils.capture import capture_output
+import keras
+import numpy as np
 
 checkpoint_path = None
 model_name = 'pspnet_50'
@@ -108,7 +111,9 @@ class App():
                  cl_border = True,
                  model_name='pspnet_50',
                  input_files = input_files,
-                 mask_files = mask_files):
+                 mask_files = mask_files,
+                 image_dir = None,
+                 annotations_dir = None):
 
         self.scales =                     merge_scales
         self.resize_ratio =               merge_scales[0]
@@ -125,6 +130,10 @@ class App():
         self.model_name                 = model_name
         self.input_files = input_files
         self.mask_files = mask_files
+        if image_dir is not None:
+            self.input_files = sorted(glob(image_dir + '/*'))
+        if annotations_dir is not None:
+            self.mask_files = sorted(glob(annotations_dir + '/*.png'))
 
         self.cone_min_diameter_px = int(self.resize_ratio *  self.cone_min_diameter_km * 1000.0 / self.meters_per_pixel)
         self.crater_min_diameter_px = int(self.resize_ratio *  self.crater_min_diameter_km * 1000.0 / self.meters_per_pixel)
@@ -140,6 +149,7 @@ class App():
 
         self.checkpoint_path = download_model(target_dir='models', name=model_name)
         self.model = None
+        keras.backend.clear_session()
 
     def print_configuration(self):
         print('Configuration:')
@@ -163,11 +173,19 @@ class App():
         print('Closing dia.           : %d' % self.closing_diameter)
         print('Threshold fn.          : %s' % None if self.threshold_fn is None else self.threshold_fn.__name__)
         print('Clear border           : %s' % str(self.cl_border))
-        print('Input images           : %s' % self.input_files)
-        print('Annotations            : %s' % self.mask_files)
+        # print('Input images           : %s' % self.input_files)
+        # print('Annotations            : %s' % self.mask_files)
+        if self.input_files is not None and self.mask_files is not None:
+            print('Input images and annotations:')
+            for i, (im , ann) in enumerate(zip(self.input_files, self.mask_files)):
+                print('%3d   %s   %s' % (i, im, ann))
+        if self.input_files is not None and self.mask_files is None:
+            print('Input_images:  ')
+            for i, (im , ann) in enumerate(self.input_files):
+                print('%3d   %s' % (i, im))
 
 
-    def run_detection(self, plot_segmentation=False, plot_detections=False, print_detections=False, save=False, input_files = None, save_dir=None):
+    def run_detection(self, plot_segmentation=True, plot_detections=True, print_detections=True, save=False, input_files = None, save_dir=None):
 
         current_time = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
@@ -176,9 +194,10 @@ class App():
             print('Model input shape', self.model.input_shape)
         _, input_width, input_height, channels = self.model.input_shape
 
-        if save:
-            if save_dir is None:
+        if save_dir is None:
                 save_dir = 'results/detection_' + current_time
+
+        if save:
             Path(save_dir).mkdir(exist_ok=True, parents=True)
 
         if input_files is None:
@@ -189,7 +208,8 @@ class App():
             file_name = os.path.basename(input_file)
             output_file_path = str(Path(save_dir + '/' + file_name).with_suffix(''))
 
-            display_message('## File %d/%d: %s' % (i+1, len(input_files), file_name))
+            if print_detections or plot_segmentation or print_detections:
+                display_message('## File %d/%d: %s' % (i+1, len(input_files), file_name))
 
             heatmaps_to_merge = []
             for scale in self.scales:
@@ -252,18 +272,21 @@ class App():
                 'pred_dt':  pred_dt
             }
             self.results_summary.append(results)
+            if save:
+                print('Result saved in %s' % save_dir)
 
 
-    def run_evaluation(self, plot_segmentation=True, plot_detections=True, print_detections=True, save=False, input_files = None, mask_files=None, save_dir=None):
+    def run_evaluation(self, plot_segmentation=True, plot_detections=True, print_detections=True, save=True, input_files = None, mask_files=None, save_dir=None):
         # run detection and evaluation
 
         # show_columns = ['true_label', 'pred_label', 'iou', 'true_id', 'pred_id', 'pred_diameter_km', 'true_diameter_km', 'pred_centroid', 'pred_confidence', 'message']
 
         current_time = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
+        if save_dir is None:
+            save_dir = 'results/evaluation_' + current_time
+
         if save:
-            if save_dir is None:
-                save_dir = 'results/evaluation_' + current_time
             Path(save_dir).mkdir(exist_ok=True, parents=True)
             with capture_output() as c:
                 self.print_configuration()
@@ -293,7 +316,7 @@ class App():
             heatmap = results['heatmap']
             pred_dt = results['pred_dt']
 
-            display_message('### File %d/%d: %s' % (i+1, len(self.results_summary), file_name))
+            display_message('## File %d/%d: %s' % (i+1, len(self.results_summary), file_name))
 
             mask_img = cv2.imread(mask_file, 1)
             mask_img = cv2.resize(mask_img, (image.shape), interpolation=cv2.INTER_NEAREST)
@@ -307,11 +330,11 @@ class App():
             true_dt['org_centroid'] = true_dt['centroid'].apply(lambda x: (x/self.resize_ratio).astype(int))
 
             if print_detections:
-                display_message('#### [%s] Targets' % (mask_file_name))
+                display_message('### [%s] Targets' % (mask_file_name))
                 display(true_dt.groupby('label').agg({'diameter_km' : ['count', 'mean', 'std', 'min', 'max']}))
             #     display(true_dt)
 
-                display_message('#### [%s]: Detected objects' % (file_name))
+                display_message('### [%s]: Detected objects' % (file_name))
                 display(pred_dt.groupby('label').agg({'diameter_km' : ['count', 'mean', 'std', 'min', 'max']}))
             #     display(pred_dt)
 
@@ -321,7 +344,7 @@ class App():
                     text_file.write(true_dt.to_string())
 
             if plot_segmentation:
-                display_message('#### [%s] Targets vs. predictions' % (file_name))
+                display_message('### [%s] Targets vs. predictions' % (file_name))
                 fig = plot_predictions(image, heatmaps=heatmap, targets=mask_img, min_confidence=self.min_confidence)
                 plt.show()
 
@@ -361,17 +384,17 @@ class App():
 
             conf_mat = confusion_matrix(true_labels_id, pred_labels_id, labels=range(len(label_map)))
 
-            display_message('#### [%s] Classification report' % (file_name))
-            cr_str = classification_report(true_labels_id, pred_labels_id, labels=range(len(label_map)), target_names=label_map.keys())
-            print(cr_str)
+            display_message('### [%s] Classification report' % (file_name))
+            # cr_str = classification_report(true_labels_id, pred_labels_id, labels=range(len(label_map)), target_names=label_map.keys())
+            # print(cr_str)
 
             with capture_output() as c:
                 class_report(conf_mat[[1,2,0], :][:, [1,2,0]], ['cone', 'crater', 'background'])
             print(c.stdout)
 
             if save:
-                with open(output_file_path + '_class_report.txt', 'w') as text_file:
-                    text_file.write(cr_str)
+                # with open(output_file_path + '_class_report.txt', 'w') as text_file:
+                #     text_file.write(cr_str)
                 with open(output_file_path + '_conf_mat.txt', 'w') as text_file:
                     text_file.write(c.stdout)
 
@@ -390,13 +413,14 @@ class App():
 
         self.conf_mat = confusion_matrix(true_labels_id, pred_labels_id, labels=range(len(label_map)))
 
-        display_message('### [%s] Classification report ALL' % (file_name))
-        cr_str = classification_report(true_labels_id, pred_labels_id, labels=range(len(label_map)), target_names=label_map.keys())
-        print(cr_str)
+        if len(self.results_summary) > 1:
+            display_message('## Summary classification report')
+            # cr_str = classification_report(true_labels_id, pred_labels_id, labels=range(len(label_map)), target_names=label_map.keys())
+            # print(cr_str)
 
-        with capture_output() as c:
-            class_report(conf_mat[[1,2,0], :][:, [1,2,0]], ['cone', 'crater', 'background'])
-        print(c.stdout)
+            with capture_output() as c:
+                class_report(conf_mat[[1,2,0], :][:, [1,2,0]], ['cone', 'crater', 'background'])
+            print(c.stdout)
 
         self.results_all_dt['TP'] = (self.results_all_dt.true_label != 'background') & (self.results_all_dt.pred_label ==  self.results_all_dt.true_label)
 
@@ -404,7 +428,47 @@ class App():
             self.results_all_dt.to_csv(save_dir + '/results_all_dt.csv')
             with open(save_dir + '/results_all_dt.txt', 'w') as text_file:
                 text_file.write(self.results_all_dt.to_string())
-            with open(save_dir + '/results_all_class_report.txt', 'w') as text_file:
-                text_file.write(cr_str)
+            # with open(save_dir + '/results_all_class_report.txt', 'w') as text_file:
+            #     text_file.write(cr_str)
             with open(save_dir + '/results_all_conf_mat.txt', 'w') as text_file:
                 text_file.write(c.stdout)
+
+    def report_detections(self, kind=('Correct', 'Errors', 'To small IOU', 'Missing detections', 'False detections'), columns=None):
+
+        if columns is None:
+            columns = [ 'image_id', 'pred_file_name', 'true_label', 'pred_label', 'iou', 'pred_confidence',
+                        'true_diameter_km', 'pred_diameter_km', 'true_bbox', 'pred_bbox', 'true_id', 'pred_id',
+                        'message']
+
+        detailed_view = {
+            'Correct' : self.results_all_dt['TP'] == True,
+            'Errors' : (self.results_all_dt.true_label != 'background') & (self.results_all_dt.pred_label != 'background') & (self.results_all_dt.true_label != self.results_all_dt.pred_label),
+            'To small IOU': self.results_all_dt.iou < self.iou_threshold,
+            'Missing detections': (self.results_all_dt.true_label != 'background' ) & (self.results_all_dt.pred_label == 'background'),
+            'False detections':  (self.results_all_dt.true_label == 'background' ) & (self.results_all_dt.pred_label != 'background')
+        }
+
+        for key in kind:
+            select_id = detailed_view[key]
+            n_rows = select_id.sum()
+            display_message("### %s : %d" % (key, n_rows))
+
+            if n_rows > 0:
+                select_dt = self.results_all_dt[select_id][columns]
+        #             display(select_dt)
+                for i in range(len(select_dt)):
+                    display(select_dt.iloc[i:i+1])
+                    row = select_dt.iloc[i]
+                    image_id = row['image_id']
+                    image = self.results_summary[image_id]['image']
+                    mask_img = self.results_summary[image_id]['mask_img']
+                    heatmap = self.results_summary[image_id]['heatmap']
+                    # image = results_summary[image_id]['image']
+
+                    bbox = row.true_bbox if not np.isnan(row.true_bbox).any() else row.pred_bbox
+                    fig = plot_predictions(image, targets=mask_img, heatmaps=heatmap, bbox=bbox, texts=row.message,
+                                     pred_bbox=row.pred_bbox, min_confidence=self.min_confidence)
+                    plt.show()
+                    fig.clear()
+                    plt.close(fig)
+
