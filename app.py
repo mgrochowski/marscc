@@ -419,7 +419,7 @@ class App():
             # print(cr_str)
 
             with capture_output() as c:
-                class_report(conf_mat[[1,2,0], :][:, [1,2,0]], ['cone', 'crater', 'background'])
+                class_report(self.conf_mat[[1,2,0], :][:, [1,2,0]], ['cone', 'crater', 'background'])
             print(c.stdout)
 
         self.results_all_dt['TP'] = (self.results_all_dt.true_label != 'background') & (self.results_all_dt.pred_label ==  self.results_all_dt.true_label)
