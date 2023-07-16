@@ -15,28 +15,28 @@ DATA_DIR='data'
 
 MODELS = {
     'vgg_unet': {
-            'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/vgg_unet_2021-09-29_132526.566811.zip',
+            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/vgg_unet_2021-09-29_132526.566811.zip',
             'tag':  'vgg_unet_2021-09-29_132526.566811',
             'name': 'vgg_unet'
      },
     'vgg_unet2': {
-            'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/vgg_unet_2022-01-19_104248.131962.zip',
+            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/vgg_unet_2022-01-19_104248.131962.zip',
             'tag':  'vgg_unet_2022-01-19_104248.131962',
             'name': 'vgg_unet'
      },
     'unet': {
-            'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/unet_2022-02-17_094711.923161.zip',
+            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/unet_2022-02-17_094711.923161.zip',
             'tag':  'unet_2022-02-17_094711.923161',
             'name': 'unet'
      },
     'pspnet_50': {
-            'url' : 'https://www.fizyka.umk.pl/~grochu/mars/models/pspnet_50_2022-12-30_205118.894456.zip',
+            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/pspnet_50_2022-12-30_205118.894456.zip',
             'tag' : 'pspnet_50_2022-12-30_205118.894456',
             'name': 'pspnet_50'
      }
 }
 
-DEFAULT_MODEL='vgg_unet2'
+DEFAULT_MODEL='pspnet_50'
 
 
 class DownloadProgressBar(tqdm):

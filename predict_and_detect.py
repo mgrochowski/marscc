@@ -76,7 +76,7 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
 
         model = model_from_checkpoint_path(checkpoint_path, input_width=input_width, input_height=input_height)
 
-    print('Model input shape', model.input_shape)
+    # print('Model input shape', model.input_shape)
     _, input_width, input_height, channels = model.input_shape
 
     image = cv2.imread(input_file, cv2.IMREAD_GRAYSCALE)
@@ -84,7 +84,7 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
         raise Exception('Cant open file %s' % input_file)
 
     h, w = image.shape[0], image.shape[1]
-    print('Image original size: %dx%d' % (h, w))
+    # print('Image original size: %dx%d' % (h, w))
 
     h_new, w_new = h, w
     if resize_ratio != 1.0:
