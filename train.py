@@ -68,7 +68,7 @@ configurations = {
    # input requirement height % 192
    "pspnet":           dict(n_classes=3, input_height=384, input_width=384, channels=1 ),
    "vgg_pspnet":       dict( n_classes=3, input_height=384, input_width=384, channels=3 ),
-
+   "resnet50_pspnet":  dict( n_classes=3, input_height=384, input_width=384, channels=3 ),
    "pspnet_50":        dict( n_classes=3, input_height=473, input_width=473, channels=1 ),
    #t_shape ==  dict(473, 473) or  (713, 713):
    "pspnet_101":       dict( n_classes=3, input_height=473, input_width=473, channels=1 ),
@@ -98,6 +98,7 @@ selected_models = [
     "vgg_pspnet",
     "pspnet_50",
     "pspnet_101",
+    "resnet50_pspnet"
 ]
 
 for key in selected_models:
@@ -116,11 +117,22 @@ for key in selected_models:
                     verbose=True
                 ),
         # EarlyStopping(verbose=2, patience=3, monitor='val_accuracy', mode='max', restore_best_weights=True),  # cause error at early stopping event !
-        TensorBoard(log_dir=log_dir, histogram_freq=1, write_graph=True, write_images=False, update_freq=5)
+        # TensorBoard(log_dir=log_dir, histogram_freq=1, write_graph=True, write_images=False, update_freq=5)
+        TensorBoard(log_dir=log_dir, histogram_freq=0, write_graph=False, write_images=False, update_freq='epoch')
     ]
 
-    optimizer_name = 'adam'
-    # optimizer_name = Adam(learning_rate=0.01)
+    initial_learning_rate = 0.001
+    decay_rate = 0.5
+    steps_per_epoch = 1024
+
+    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=initial_learning_rate,
+        decay_steps=(steps_per_epoch * 50),
+        decay_rate=decay_rate,
+        staircase=True)
+
+    # optimizer_name = 'adam'
+    optimizer_name = Adam(learning_rate=lr_schedule)
 
     preprocessing = None
     if model.channels == 3:
@@ -137,10 +149,10 @@ for key in selected_models:
         train_annotations="data/mars_data_20221207_x4_x8_x16/train/annotations/",
         optimizer_name=optimizer_name,
         batch_size = 20,
-        steps_per_epoch = 1024,
+        steps_per_epoch = steps_per_epoch,
         # steps_per_epoch = 2048,
         checkpoints_path =str(Path(checkpoint_path)),
-        epochs=50,  # real epochs = epochs * (batch * steps) / instances = 50 * (20 * 1024) / 66984 = 15.3
+        epochs=300,  # real epochs = epochs * (batch * steps) / instances = 50 * (20 * 1024) / 66984 = 15.3
                                                    # np_one: real_epochs = 63,
                                                    # x4_x8_x16 + mosaic = 140 epoch
         # val_images = "data/mars_data_20210923/val/images/",
