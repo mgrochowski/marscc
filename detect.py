@@ -89,7 +89,7 @@ def detect_cones_and_craters(label_image=None, heatmap=None, min_area=0, min_sol
             label_image = heatmap.argmax(axis=2)
     else:
         if heatmap is None:
-            heatmap = np.ones((label_image.shape[0], label_image.shape[1], len(label_map)), dtype=np.float)
+            heatmap = np.ones((label_image.shape[0], label_image.shape[1], len(label_map)), dtype=np.float64)
     detected = {}
 
     # detect

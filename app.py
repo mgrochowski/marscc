@@ -3,24 +3,23 @@ import math
 import pandas as pd
 from IPython.core.display import display, Javascript
 from utils.download import download_model
+import tensorflow as tf
 from predict_and_detect import predict_large_image, plot_predictions
 from detect import detect_cones_and_craters, draw_regions3, match_detections, filter_matched_detections
 from detect import detections_to_datatable, class_report, merge_heatmaps
 from utils.image import image_to_labelmap, recognize_rgb_map, label_map
-from keras_segmentation.predict import model_from_checkpoint_path
 import matplotlib.pyplot as plt
 from pathlib import Path
 from datetime import datetime
-# from tqdm.auto import tqdm
 import cv2
 from time import sleep
 import os
-import uuid
 from glob import glob
 from sklearn.metrics import classification_report, confusion_matrix
 from IPython.utils.capture import capture_output
 import keras
 import numpy as np
+import json
 
 checkpoint_path = None
 model_name = 'pspnet_50'
@@ -113,7 +112,8 @@ class App():
                  input_files = input_files,
                  mask_files = mask_files,
                  image_dir = None,
-                 annotations_dir = None):
+                 annotations_dir = None,
+                 ):
 
         self.scales =                     merge_scales
         self.resize_ratio =               merge_scales[0]
@@ -133,7 +133,7 @@ class App():
         if image_dir is not None:
             self.input_files = sorted(glob(image_dir + '/*'))
         if annotations_dir is not None:
-            self.mask_files = sorted(glob(annotations_dir + '/*.png'))
+            self.mask_files = sorted(glob(annotations_dir + '/*'))
 
         self.cone_min_diameter_px = int(self.resize_ratio *  self.cone_min_diameter_km * 1000.0 / self.meters_per_pixel)
         self.crater_min_diameter_px = int(self.resize_ratio *  self.crater_min_diameter_km * 1000.0 / self.meters_per_pixel)
@@ -147,8 +147,10 @@ class App():
         if model_name == 'pspnet_50' or model_name == 'vgg_unet3':
             self.imgNorm = "sub_and_divide"
 
-        self.checkpoint_path = download_model(target_dir='models', name=model_name)
+        self.checkpoint_format = format
+        self.checkpoint_path = download_model(target_dir='models', name=model_name, format='tf')
         self.model = None
+        self.results_summary = []
         keras.backend.clear_session()
 
     def print_configuration(self):
@@ -190,8 +192,16 @@ class App():
         current_time = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
         if self.model is None:
-            self.model = model_from_checkpoint_path(self.checkpoint_path, input_width=None, input_height=None)
+            self.model = tf.keras.models.load_model(self.checkpoint_path)
             print('Model input shape', self.model.input_shape)
+
+            config_file = self.checkpoint_path + '/' +self.model_name + '_config.json'
+            assert (os.path.isfile(config_file)), (
+                    "Checkpoint not found: %s. " % (config_file))
+            model_config = json.loads(open(config_file, "r").read())
+            self.model.output_height = model_config['output_height']
+            self.model.output_width = model_config['output_width']
+
         _, input_width, input_height, channels = self.model.input_shape
 
         if save_dir is None:
@@ -276,7 +286,7 @@ class App():
                 print('Result saved in %s' % save_dir)
 
 
-    def run_evaluation(self, plot_segmentation=True, plot_detections=True, print_detections=True, save=True, input_files = None, mask_files=None, save_dir=None):
+    def run_evaluation(self, plot_segmentation=True, plot_detections=True, print_detections=True, save=True, input_files = None, mask_files=None, save_dir=None, run_detection=False):
         # run detection and evaluation
 
         # show_columns = ['true_label', 'pred_label', 'iou', 'true_id', 'pred_id', 'pred_diameter_km', 'true_diameter_km', 'pred_centroid', 'pred_confidence', 'message']
@@ -299,7 +309,8 @@ class App():
         if mask_files is None:
             mask_files = self.mask_files
 
-        self.run_detection(plot_segmentation=False, plot_detections=False, save=save, save_dir=save_dir, print_detections=False, input_files=input_files)
+        if len(self.results_summary) == 0 or run_detection is True:
+            self.run_detection(plot_segmentation=False, plot_detections=False, save=save, save_dir=save_dir, print_detections=False, input_files=input_files)
 
         i=0
         for mask_file, results in zip(mask_files, self.results_summary):

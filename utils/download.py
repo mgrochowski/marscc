@@ -15,23 +15,23 @@ DATA_DIR='data'
 
 MODELS = {
     'vgg_unet': {
-            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/vgg_unet_2021-09-29_132526.566811.zip',
-            'tag':  'vgg_unet_2021-09-29_132526.566811',
+            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/vgg_unet_2021-09-29_tf.zip',
+            'tag':  'vgg_unet_2021-09-29_tf',
             'name': 'vgg_unet'
      },
     'vgg_unet2': {
-            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/vgg_unet_2022-01-19_104248.131962.zip',
-            'tag':  'vgg_unet_2022-01-19_104248.131962',
+            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/vgg_unet_2022-01-19_tf.zip',
+            'tag':  'vgg_unet_2022-01-19_tf',
             'name': 'vgg_unet'
      },
     'unet': {
-            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/unet_2022-02-17_094711.923161.zip',
-            'tag':  'unet_2022-02-17_094711.923161',
+            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/unet_2022-02-17_tf.zip',
+            'tag':  'unet_2022-02-17_tf',
             'name': 'unet'
      },
     'pspnet_50': {
-            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/pspnet_50_2022-12-30_205118.894456.zip',
-            'tag' : 'pspnet_50_2022-12-30_205118.894456',
+            'url' : 'https://github.com/mgrochowski/marscc/releases/download/v0.1/pspnet_50_2022-12-30_tf.zip',
+            'tag' : 'pspnet_50_2022-12-30_tf',
             'name': 'pspnet_50'
      }
 }
@@ -85,7 +85,7 @@ def download_training_data(target_dir=DATA_DIR):
     else:
         download_and_unzip(MARS_TRAIN_URL, target_dir)
 
-def download_model(target_dir=MODELS_DIR, name=DEFAULT_MODEL):
+def download_model(target_dir=MODELS_DIR, name=DEFAULT_MODEL, format='checkpoint'):
 
     model_dir = Path(target_dir + '/' + MODELS[name]['tag'])
     if model_dir.exists():
@@ -93,7 +93,12 @@ def download_model(target_dir=MODELS_DIR, name=DEFAULT_MODEL):
     else:
         download_and_unzip(MODELS[name]['url'], target_dir)
 
-    checkpoint_path = str( model_dir / Path(MODELS[name]['name'] ))
+    if format == 'checkpoint':
+        checkpoint_path = str( model_dir / Path(MODELS[name]['name']))
+    elif format == 'pb' or format == 'tf':
+        checkpoint_path = str( model_dir )
+    else:
+        raise  'Unknown format. Use one of: checkpoint, tf, pb'
     return checkpoint_path
 
 

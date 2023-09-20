@@ -16,7 +16,13 @@ from keras_segmentation.predict import model_from_checkpoint_path
 from utils.image import labelmap_to_image, split_image, grayscale_to_rgb
 from utils.download import download_model
 from keras_segmentation.models.config import IMAGE_ORDERING
+try:
+    from tqdm import tqdm
+except ImportError:
+    print("tqdm not found, disabling progress bars")
 
+    def tqdm(iter):
+        return iter
 
 @click.command()
 @click.option('--input_file', default=None, help='Input image with Mars surface')
@@ -120,8 +126,8 @@ def predict_large_image(input_file, input_width=None, input_height=None, overlap
     # segmentation
     predictions = []
     start_ind = 0
-    for i in range(n_steps):
-        p = model.predict(input_images[start_ind:start_ind+batch_size])
+    for i in tqdm(range(n_steps)):
+        p = model.predict(input_images[start_ind:start_ind+batch_size], verbose=0)
         predictions.append(p)
         start_ind = start_ind + batch_size
 
